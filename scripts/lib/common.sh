@@ -29,4 +29,12 @@ tas_with_group_lock() {
   return "$result"
 }
 tas_signal_sidebar() { id=${1-}; tas_validate_id "$id" pane || return 2; tas_tmux wait-for -S "awesome-sidebar-refresh-${id#%}"; }
-tas_signal_group() { group=${1-}; tas_validate_text "$group" && [ -n "$group" ] || return 2; lock=$(tas_lock_name "$group"); tas_tmux wait-for -S "$lock"; }
+tas_signal_group() {
+  group=${1-}; tas_validate_text "$group" && [ -n "$group" ] || return 2
+  tab=$(printf '\t')
+  tas_tmux list-panes -a -F "#{pane_id}${tab}#{@awesome_sidebar_group}${tab}#{@awesome_sidebar_kind}" |
+    awk -F '\t' -v g="$group" '$2==g && $3=="sidebar"{print $1}' |
+    while IFS= read -r pane; do
+      [ -n "$pane" ] && tas_signal_sidebar "$pane"
+    done
+}

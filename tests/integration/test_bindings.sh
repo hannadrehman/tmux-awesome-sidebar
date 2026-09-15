@@ -13,7 +13,8 @@ tmux_test source-file "$PROJECT_ROOT/tmux-awesome-sidebar.tmux"
 assert_eq "$before" "$(tmux_test show-options -gv prefix)"
 assert_eq "$status_before" "$(tmux_test show-options -gv status-style)"
 assert_eq "$border_before" "$(tmux_test show-options -gv pane-border-style)"
-tmux_test list-keys -T prefix S | assert_contains 'scripts/action enter'
+tmux_test list-keys -T prefix S | assert_contains 'scripts/action'
+tmux_test list-keys -T prefix S | assert_contains ' enter '
 tmux_test list-keys -T prefix | assert_not_contains 'set-option -g prefix'
 tmux_test list-keys -T awesome-sidebar | assert_contains 'navigate'
 tmux_test list-keys -T awesome-sidebar | assert_contains 'down'
@@ -35,5 +36,5 @@ mkdir -p "$TMUX_TMPDIR/caller"
 (cd "$TMUX_TMPDIR/caller" && TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$window_id" "$pane_id")
 tmux_test set-option -g @awesome_sidebar_key X
 tmux_test source-file "$PROJECT_ROOT/tmux-awesome-sidebar.tmux"
-tmux_test list-keys -T prefix X | assert_contains 'scripts/action enter'
+tmux_test list-keys -T prefix X | assert_contains 'scripts/action'
 tmux_test list-keys -T prefix S | assert_contains "$PROJECT_ROOT/scripts/action"

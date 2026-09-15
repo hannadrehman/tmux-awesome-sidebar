@@ -14,7 +14,7 @@ tas_parse_worktrees() {
       path=""; branch=""
     }
     /^worktree / { emit(); path=substr($0,10); next }
-    /^branch / { branch=substr($0,15); next }
+    /^branch / { branch=substr($0,8); sub(/^refs\/heads\//, "", branch); next }
     /^$/ { emit(); next }
     END { emit() }
   '
@@ -45,3 +45,4 @@ tas_worktree_activate() {
 }
 if [ "${1-}" = --discover ]; then tas_discover_roots "${2-}"; fi
 if [ "${1-}" = --activate ]; then tas_worktree_activate "${2-}" "${3-}"; fi
+[ "$#" -eq 0 ] && tas_parse_worktrees ""

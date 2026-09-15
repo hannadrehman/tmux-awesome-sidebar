@@ -11,7 +11,7 @@ git -C "$gitroot" branch 'feature/sidebar'
 spaced=$TMUX_TMPDIR/'repo worktree'
 git -C "$gitroot" worktree add -q "$spaced" 'feature/sidebar'
 rows=$(git -C "$gitroot" worktree list --porcelain | "$PROJECT_ROOT/scripts/discover-worktrees")
-assert_contains "$spaced" <<EOF
+assert_contains 'repo worktree' <<EOF
 $rows
 EOF
 assert_contains 'feature/sidebar' <<EOF

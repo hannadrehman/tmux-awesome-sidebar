@@ -16,19 +16,26 @@ enable_group() {
   tas_validate_id "$session" session && tas_validate_id "$window" window && tas_validate_id "$pane" pane || return 2
   kind=$(tas_tmux display-message -p -t "$pane" '#{@awesome_sidebar_kind}')
   [ "$kind" = sidebar ] && return 0
-  group=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_group)
+  group=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_group)
+  [ -n "$group" ] || group=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_group)
   [ -n "$group" ] || group="s${session#\$}-w${window#@}"
   tas_validate_text "$group" || return 2
-  storage=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_storage)
+  session_group=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_group)
+  storage=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_storage)
+  [ -n "$storage" ] || { [ "$group" = "$session_group" ] && storage=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_storage); }
   [ -n "$storage" ] || storage="__awesome_sidebar_$group"
   width=$(tas_clamp_width "$(tas_tmux show-option -gqv @awesome_sidebar_width)")
   icons=$(tas_tmux show-option -gqv @awesome_sidebar_icons); [ "$icons" = nerd ] || icons=ascii
   tas_tmux set-option -t "$session" @awesome_sidebar_enabled on || return 1
-  tas_tmux set-option -t "$session" @awesome_sidebar_group "$group" || return 1
-  tas_tmux set-option -t "$session" @awesome_sidebar_storage "$storage" || return 1
+  [ -n "$session_group" ] || tas_tmux set-option -t "$session" @awesome_sidebar_group "$group" || return 1
+  [ -n "$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_storage)" ] || tas_tmux set-option -t "$session" @awesome_sidebar_storage "$storage" || return 1
   tas_tmux set-option -t "$session" @awesome_sidebar_host_session "$session" || return 1
   tas_tmux set-option -w -t "$window" @awesome_sidebar_group "$group" || return 1
+  tas_tmux set-option -w -t "$window" @awesome_sidebar_storage "$storage" || return 1
   tas_tmux set-option -w -t "$window" @awesome_sidebar_kind content || return 1
+  tab=$(printf '\t')
+  window_index=$(tas_tmux list-windows -t "$session" -F "#{window_id}${tab}#{window_index}" | awk -F '\t' -v w="$window" '$1==w{print $2;exit}')
+  tas_tmux set-option -w -t "$window" @awesome_sidebar_host_index "$window_index" || return 1
   if ! tas_tmux has-session -t "$storage" 2>/dev/null; then
     tas_tmux new-session -d -s "$storage" -n bootstrap -c "$(tas_tmux display-message -p -t "$pane" '#{pane_current_path}')" || return 1
     tas_tmux set-option -t "$storage" @awesome_sidebar_group "$group" || return 1
@@ -84,8 +91,9 @@ auto_enable() {
     for window in $(tas_tmux list-windows -t "$session" -F '#{window_id}'); do
       pane=$(tas_tmux list-panes -t "$window" -F '#{pane_id}' | sed -n '1p')
       [ -n "$pane" ] || continue
-      group=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_group)
-      [ -n "$group" ] || group="s${session#\$}-w${window#@}"
+      group=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_group)
+      [ -n "$group" ] || group="s${session#\$}-w$(tas_tmux display-message -p -t "$window" '#{window_index}')"
+      tas_tmux set-option -w -t "$window" @awesome_sidebar_group "$group" || return 1
       tas_with_group_lock "$group" enable_group "$session" "$window" "$pane" || return 1
     done
   done

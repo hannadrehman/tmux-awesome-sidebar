@@ -45,9 +45,14 @@ tas_cursor_move() {
 tas_parent_for_row() { awk -F '\t' -v id="$1" '$2==id{print $3;exit}'; }
 tas_build_search_index() { tas_build_rows "$1"; }
 tas_render() {
-  width=$(tas_clamp_width "$1"); icons=$2; cursor=$3
+  width=$(tas_clamp_width "$1"); icons=$2; cursor=$3; query=${4-}
   printf '\033[2J\033[H'
-  awk -F '\t' -v w="$width" -v i="$icons" -v c="$cursor" '
+  search_awk=${TAS_SEARCH_AWK:-${PROJECT_ROOT:-.}/scripts/search.awk}
+  if [ -n "$query" ]; then
+    awk -v query="$query" -f "$search_awk" | awk -F '\t' '{sub(/^[^\t]*\t/, ""); print}'
+  else
+    cat
+  fi | awk -F '\t' -v w="$width" -v i="$icons" -v c="$cursor" '
   BEGIN { e=sprintf("%c",27) }
   function shorten(s,n) { return substr(s,1,n) }
   {
