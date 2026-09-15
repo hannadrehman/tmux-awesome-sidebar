@@ -32,8 +32,9 @@ Search (`/`) uses only display names, repositories, branches, paths, commands,
 statuses, and tags. It does not capture scrollback, inspect environments, or
 read shell history. `Escape` clears the active query and restores navigation.
 
-Use `S` after the prefix to enter the sidebar. Inside it, `j/k`, `h/l`, `g/G`,
-`Enter`, `r`, `/`, and `q` provide navigation and actions. The `ascii` icon
+Use `S` after the prefix to focus the left sidebar. Inside it, `j/k` or the
+arrow keys move through the list, and `Enter` switches to the selected window
+or pane. `h/l`, `g/G`, `r`, `/`, and `q` provide the remaining navigation and actions. The `ascii` icon
 mode is portable; `nerd` is an opt-in display choice. Run `scripts/doctor` to
 check dependencies, hooks, links, tags, bindings, prefix inheritance, and
 style interference. Disable leaves backing windows and their processes

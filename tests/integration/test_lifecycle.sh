@@ -14,6 +14,8 @@ for candidate in $(tmux_test list-panes -t "$window_id" -F '#{pane_id}'); do
   [ "$(tmux_test display-message -p -t "$candidate" '#{@awesome_sidebar_kind}')" = sidebar ] && { sidebar=$candidate; break; }
 done
 [ -n "$sidebar" ]
+assert_eq 0 "$(tmux_test display-message -p -t "$sidebar" '#{pane_left}')" "sidebar is on the left"
+assert_eq 1 "$(tmux_test display-message -p -t "$sidebar" '#{pane_active}')" "enter focuses the sidebar"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$window_id" "$sidebar"
 assert_eq 2 "$(tmux_test list-panes -t "$window_id" | wc -l | awk '{print $1}')"
 new_host_window=$(tmux_test new-window -d -t "$session_id" -P -F '#{window_id}')

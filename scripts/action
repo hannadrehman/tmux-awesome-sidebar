@@ -87,13 +87,22 @@ enable_group() {
   bootstrap=$(tas_tmux list-windows -t "$storage" -F '#{window_id}	#{window_name}' | awk -F '\t' '$2=="bootstrap"{print $1; exit}')
   [ -z "$bootstrap" ] || [ "$bootstrap" = "$window" ] || tas_tmux kill-window -t "$bootstrap" || return 1
   if ! tas_tmux list-panes -t "$window" -F '#{@awesome_sidebar_kind}' | grep -Fqx sidebar; then
-    sidebar=$(tas_tmux split-window -d -h -p "$width" -t "$window" -P -F '#{pane_id}') || return 1
+    sidebar=$(tas_tmux split-window -d -h -b -p "$width" -t "$window" -P -F '#{pane_id}') || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_kind sidebar || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_group "$group" || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "" || return 1
     tas_tmux respawn-pane -k -t "$sidebar" "$ROOT/sidebar-view" "$group" "$sidebar" "$width" "$icons" || return 1
   fi
   tas_signal_group "$group"
+}
+
+focus_sidebar() {
+  window=$1
+  tas_validate_id "$window" window || return 2
+  sidebar=$(tas_tmux list-panes -t "$window" -F '#{pane_id}\t#{@awesome_sidebar_kind}' |
+    awk -F '\t' '$2=="sidebar"{print $1;exit}')
+  [ -n "$sidebar" ] || return 1
+  tas_tmux select-pane -t "$sidebar"
 }
 
 session_new() {
@@ -226,7 +235,7 @@ navigate_action() {
 action=${1-}; [ -n "$action" ] || usage
 case $action in
   auto-enable) [ "$#" -eq 1 ] || usage; auto_enable;;
-  enter) [ "$#" -eq 4 ] || usage; shift; tas_validate_id "$1" session && tas_validate_id "$2" window && tas_validate_id "$3" pane || exit 2; tas_tmux has-session -t "$1" 2>/dev/null || exit 0; group=$(tas_tmux show-option -qv -t "$1" @awesome_sidebar_group); [ -n "$group" ] || group="s${1#\$}-w${2#@}"; tas_with_group_lock "$group" enable_group "$@";;
+  enter) [ "$#" -eq 4 ] || usage; shift; tas_validate_id "$1" session && tas_validate_id "$2" window && tas_validate_id "$3" pane || exit 2; tas_tmux has-session -t "$1" 2>/dev/null || exit 0; group=$(tas_tmux show-option -qv -t "$1" @awesome_sidebar_group); [ -n "$group" ] || group="s${1#\$}-w${2#@}"; tas_with_group_lock "$group" enable_group "$@" && focus_sidebar "$2" && { tas_tmux switch-client -T awesome-sidebar 2>/dev/null || :; };;
   enable) [ "$#" -eq 4 ] || usage; shift; tas_with_group_lock "$1" enable_group "$@";;
   disable)
     if [ "$#" -eq 2 ]; then
