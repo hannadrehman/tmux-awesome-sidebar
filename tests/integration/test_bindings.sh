@@ -14,7 +14,8 @@ assert_eq "$before" "$(tmux_test show-options -gv prefix)"
 assert_eq "$status_before" "$(tmux_test show-options -gv status-style)"
 assert_eq "$border_before" "$(tmux_test show-options -gv pane-border-style)"
 tmux_test list-keys -T prefix S | assert_contains 'scripts/action'
-tmux_test list-keys -T prefix S | assert_contains ' enter '
+tmux_test list-keys -T prefix S | assert_contains ' focus '
+tmux_test list-keys -T prefix S | assert_contains '#{window_id}'
 tmux_test list-keys -T prefix S | assert_contains '#{client_name}'
 assert_file_contains "$PROJECT_ROOT/scripts/action" 'switch-client -c "$client" -T awesome-sidebar'
 tmux_test list-keys -T prefix | assert_not_contains 'set-option -g prefix'
@@ -27,7 +28,7 @@ tmux_test list-keys -T awesome-sidebar Down | assert_contains 'down'
 tmux_test list-keys -T awesome-sidebar | assert_contains 'command-prompt'
 tmux_test show-hooks -g | assert_contains 'after-new-window'
 tmux_test show-hooks -g | assert_contains 'auto-enable'
-assert_success "$PROJECT_ROOT/scripts/action" enter '$1' '@1' '%1'
+assert_failure "$PROJECT_ROOT/scripts/action" focus '@999999'
 assert_file_contains "$PROJECT_ROOT/README.md" "set -g @plugin 'hannadrehman/tmux-awesome-sidebar'"
 assert_file_contains "$PROJECT_ROOT/README.md" '@awesome_sidebar_worktree_roots'
 assert_file_contains "$PROJECT_ROOT/README.md" '@awesome_sidebar_width'

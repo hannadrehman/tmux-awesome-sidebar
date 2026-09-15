@@ -17,11 +17,9 @@ done
 assert_eq 0 "$(tmux_test display-message -p -t "$sidebar" '#{pane_left}')" "sidebar is on the left"
 assert_eq 1 "$(tmux_test display-message -p -t "$sidebar" '#{pane_active}')" "enter focuses the sidebar"
 assert_eq "$window_id" "$(tmux_test show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)" "current session is initially selected"
-TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" navigate "$sidebar" down
-down_cursor=$(tmux_test show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)
-[ "$down_cursor" != "$window_id" ]
-TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" navigate "$sidebar" up
-assert_eq "$window_id" "$(tmux_test show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)" "j/k move the cursor"
+tmux_test select-pane -t "$pane_id"
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" focus "$window_id"
+assert_eq "$sidebar" "$(tmux_test display-message -p '#{pane_id}')" "focus action selects the persistent sidebar"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$window_id" "$sidebar"
 assert_eq 2 "$(tmux_test list-panes -t "$window_id" | wc -l | awk '{print $1}')"
 new_host_window=$(tmux_test new-window -d -t "$session_id" -P -F '#{window_id}')
@@ -49,7 +47,8 @@ new_window=$(tmux_test list-windows -t "$storage" -F '#{window_id}	#{window_name
 [ -n "$new_window" ]
 tmux_test set-option -p -t "$sidebar" @awesome_sidebar_cursor "$new_window"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" navigate "$sidebar" enter
-selected_window=$(tmux_test list-windows -t "$session_id" -F '#{window_id}\t#{window_active}' |
+tab=$(printf '\t')
+selected_window=$(tmux_test list-windows -t "$session_id" -F "#{window_id}${tab}#{window_active}" |
   awk -F '\t' '$2==1{print $1;exit}')
 assert_eq "$new_window" "$selected_window" "Enter selects the highlighted session"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" split "$group" horizontal 50

@@ -14,7 +14,8 @@ tmux_test set-option -p -t "$legacy_sidebar" @awesome_sidebar_cursor '@remembere
 
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$window_id" "$content_pane"
 
-sidebar=$(tmux_test list-panes -t "$window_id" -F '#{pane_id}\t#{@awesome_sidebar_kind}' |
+tab=$(printf '\t')
+sidebar=$(tmux_test list-panes -t "$window_id" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" |
   awk -F '\t' '$2=="sidebar"{print $1;exit}')
 [ -n "$sidebar" ]
 assert_eq 0 "$(tmux_test display-message -p -t "$sidebar" '#{pane_left}')" "legacy sidebar migrates left"
