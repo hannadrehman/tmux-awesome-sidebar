@@ -8,7 +8,16 @@ export PROJECT_ROOT TEST_SOCKET TMUX_SOCKET TMUX_TMPDIR
 mkdir -p "$TMUX_TMPDIR"
 TMUX_BIN=${TMUX_BIN:-tmux}; export TMUX_BIN
 tmux_test() { TMUX_TMPDIR=$TMUX_TMPDIR "$TMUX_BIN" -L "$TEST_SOCKET" -f /dev/null "$@"; }
-cleanup() { "$TMUX_BIN" -L "$TEST_SOCKET" kill-server >/dev/null 2>&1 || :; rm -rf "$TMUX_TMPDIR"; }
+cleanup() {
+  "$TMUX_BIN" -L "$TEST_SOCKET" kill-server >/dev/null 2>&1 || :
+  i=0
+  while [ -d "$TMUX_TMPDIR" ] && [ "$i" -lt 10 ]; do
+    rm -rf "$TMUX_TMPDIR" 2>/dev/null || :
+    [ -d "$TMUX_TMPDIR" ] || break
+    i=$((i + 1))
+    sleep 0.05
+  done
+}
 trap cleanup EXIT HUP INT TERM
 assert_eq() { [ "$1" = "$2" ] || { echo "assert_eq: ${3:-values}: '$1' != '$2'" >&2; return 1; }; }
 assert_success() { "$@" || return 1; }
