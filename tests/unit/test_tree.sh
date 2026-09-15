@@ -10,4 +10,7 @@ visible=$(printf '%s' "$rows" | tas_tree_visible '')
 assert_contains 'Claude UI' <<EOF
 $visible
 EOF
+assert_not_contains 'Sidebar' <<EOF
+$visible
+EOF
 assert_eq '%4' "$(printf '%s' "$rows" | tas_cursor_move '@2' end)"

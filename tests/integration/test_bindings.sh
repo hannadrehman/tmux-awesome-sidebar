@@ -13,6 +13,8 @@ assert_eq "$before" "$(tmux_test show-options -gv prefix)"
 assert_eq "$status_before" "$(tmux_test show-options -gv status-style)"
 assert_eq "$border_before" "$(tmux_test show-options -gv pane-border-style)"
 tmux_test list-keys -T prefix S | assert_contains 'scripts/action enter'
+tmux_test list-keys -T prefix | assert_not_contains 'set-option -g prefix'
+tmux_test list-keys -T awesome-sidebar | assert_contains 'navigate down'
 assert_success "$PROJECT_ROOT/scripts/action" enter '$1' '@1' '%1'
 assert_file_contains "$PROJECT_ROOT/README.md" "set -g @plugin 'hannadrehman/tmux-awesome-sidebar'"
 assert_file_contains "$PROJECT_ROOT/README.md" '@awesome_sidebar_worktree_roots'
