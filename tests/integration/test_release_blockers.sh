@@ -26,27 +26,28 @@ second_group=$(tmux_test show-option -wqv -t "$second_window" @awesome_sidebar_g
 
 # Each host window must resolve its own storage/session for actions.
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" split "$second_group" horizontal 50 "$second_sidebar"
-assert_eq 2 "$(tmux_test list-panes -t "$second_window" | wc -l | awk '{print $1}')" "second host split"
+assert_eq 3 "$(tmux_test list-panes -t "$second_window" | wc -l | awk '{print $1}')" "second host split"
 
 # A window linked into both host and storage sessions is one logical row.
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" refresh "$second_group" >/dev/null
-rows=$(PROJECT_ROOT="$PROJECT_ROOT" TMUX_SOCKET=$TEST_SOCKET sh -c '. "$1/scripts/lib/common.sh"; . "$1/scripts/lib/tree.sh"; tas_build_rows "$2"' sh "$PROJECT_ROOT" "$second_group")
-assert_eq 1 "$(printf '%s\n' "$rows" | awk -F '\t' '$1=="session"{count[$2]++} END{for (id in count) if(count[id]>1) bad=1; print bad+0}')" "deduplicated session rows"
+rows=$(env PROJECT_ROOT="$PROJECT_ROOT" TMUX_SOCKET="$TEST_SOCKET" sh -c '. "$1/scripts/lib/common.sh"; . "$1/scripts/lib/tree.sh"; tas_build_rows "$2"' sh "$PROJECT_ROOT" "$second_group")
+assert_eq 0 "$(printf '%s\n' "$rows" | awk -F '\t' '$1=="session"{count[$2]++} END{for (id in count) if(count[id]>1) bad=1; print bad+0}')" "deduplicated session rows"
 
 # Search must render through the installed path and Escape must restore state.
+tmux_test set-option -w -t "$second_window" @awesome_sidebar_name feature/sidebar
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" navigate "$second_sidebar" gg
-TMUX_SOCKET=$TEST_SOCKET tmux set-option -p -t "$second_sidebar" @awesome_sidebar_collapsed ""
+tmux_test set-option -p -t "$second_sidebar" @awesome_sidebar_collapsed ""
 before_cursor=$(tmux_test show-option -pqv -t "$second_sidebar" @awesome_sidebar_cursor)
-TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" search-update "$second_group" 'sh' "$second_sidebar"
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" search-update "$second_group" 'feature' "$second_sidebar"
 i=0
 rendered=''
 while [ "$i" -lt 20 ]; do
   rendered=$(tmux_test capture-pane -p -t "$second_sidebar" 2>/dev/null || :)
-  case "$rendered" in *Sessions*) break;; esac
+  case "$rendered" in *feature/sidebar*) break;; esac
   i=$((i + 1))
   sleep 0.05
 done
-printf '%s\n' "$rendered" | assert_contains 'Sessions'
+printf '%s\n' "$rendered" | assert_contains 'feature/sidebar'
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" search-clear "$second_group" "$second_sidebar"
 assert_eq '' "$(tmux_test show-option -pqv -t "$second_sidebar" @awesome_sidebar_query)" "search query cleared"
 assert_eq "$before_cursor" "$(tmux_test show-option -pqv -t "$second_sidebar" @awesome_sidebar_cursor)" "cursor restored"

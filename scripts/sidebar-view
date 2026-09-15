@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+PROJECT_ROOT=$(CDPATH= cd -- "$ROOT/.." && pwd -P); export PROJECT_ROOT
 . "$ROOT/lib/common.sh"
 . "$ROOT/lib/tree.sh"
 group=${1-}; pane_id=${2-}; width=$(tas_clamp_width "${3:-28}"); icons=${4:-ascii}
