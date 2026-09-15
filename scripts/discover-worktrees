@@ -39,10 +39,14 @@ tas_merge_worktrees_with_sessions() {
   tas_discover_roots "$roots" | awk -F '\t' '!seen[$4]++'
 }
 tas_worktree_activate() {
-  group=$1; path=$2; tas_validate_text "$group" && tas_validate_text "$path" || return 2
+  group=$1; path=$2; context=${3-}; host_session=${4-}; tas_validate_text "$group" && tas_validate_text "$path" || return 2
   [ -d "$path" ] || return 1
-  "$ROOT/action" session-new "$group" "$path" "$(basename "$path")"
+  [ -n "$host_session" ] || host_session=$(tas_tmux list-sessions -F '#{session_id} #{session_name} #{@awesome_sidebar_group}' | awk -v g="$group" '$3==g && $2 !~ /^__awesome_sidebar_/{print $1;exit}')
+  [ -n "$host_session" ] || return 1
+  win=$("$ROOT/scripts/action" session-new "$group" "$path" "$(basename "$path")" "$context") || return 1
+  [ -n "$win" ] || return 1
+  "$ROOT/scripts/action" session-select "$group" "$win" "$context" "$host_session" || :
 }
 if [ "${1-}" = --discover ]; then tas_discover_roots "${2-}"; fi
-if [ "${1-}" = --activate ]; then tas_worktree_activate "${2-}" "${3-}"; fi
+if [ "${1-}" = --activate ]; then tas_worktree_activate "${2-}" "${3-}" "${4-}" "${5-}"; fi
 [ "$#" -eq 0 ] && tas_parse_worktrees ""
