@@ -86,11 +86,25 @@ enable_group() {
   window_has_link "$storage" "$window" || tas_tmux link-window -s "$window" -t "$storage:" || return 1
   bootstrap=$(tas_tmux list-windows -t "$storage" -F '#{window_id}	#{window_name}' | awk -F '\t' '$2=="bootstrap"{print $1; exit}')
   [ -z "$bootstrap" ] || [ "$bootstrap" = "$window" ] || tas_tmux kill-window -t "$bootstrap" || return 1
-  if ! tas_tmux list-panes -t "$window" -F '#{@awesome_sidebar_kind}' | grep -Fqx sidebar; then
+  sidebar=$(tas_tmux list-panes -t "$window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" |
+    awk -F '\t' '$2=="sidebar"{print $1;exit}')
+  saved_cursor=''
+  saved_collapsed=''
+  saved_query=''
+  if [ -n "$sidebar" ] && [ "$(tas_tmux display-message -p -t "$sidebar" '#{pane_left}')" != 0 ]; then
+    saved_cursor=$(tas_tmux show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)
+    saved_collapsed=$(tas_tmux show-option -p -qv -t "$sidebar" @awesome_sidebar_collapsed)
+    saved_query=$(tas_tmux show-option -p -qv -t "$sidebar" @awesome_sidebar_query)
+    tas_tmux kill-pane -t "$sidebar" || return 1
+    sidebar=''
+  fi
+  if [ -z "$sidebar" ]; then
     sidebar=$(tas_tmux split-window -d -h -b -p "$width" -t "$window" -P -F '#{pane_id}') || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_kind sidebar || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_group "$group" || return 1
-    tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "" || return 1
+    tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "$saved_cursor" || return 1
+    tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_collapsed "$saved_collapsed" || return 1
+    tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_query "$saved_query" || return 1
     tas_tmux respawn-pane -k -t "$sidebar" "$ROOT/sidebar-view" "$group" "$sidebar" "$width" "$icons" || return 1
   fi
   tas_signal_group "$group"
