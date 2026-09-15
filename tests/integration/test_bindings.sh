@@ -15,7 +15,8 @@ assert_eq "$status_before" "$(tmux_test show-options -gv status-style)"
 assert_eq "$border_before" "$(tmux_test show-options -gv pane-border-style)"
 tmux_test list-keys -T prefix S | assert_contains 'scripts/action'
 tmux_test list-keys -T prefix S | assert_contains ' enter '
-assert_file_contains "$PROJECT_ROOT/scripts/action" 'switch-client -T awesome-sidebar'
+tmux_test list-keys -T prefix S | assert_contains '#{client_name}'
+assert_file_contains "$PROJECT_ROOT/scripts/action" 'switch-client -c "$client" -T awesome-sidebar'
 tmux_test list-keys -T prefix | assert_not_contains 'set-option -g prefix'
 tmux_test list-keys -T awesome-sidebar | assert_contains 'navigate'
 tmux_test list-keys -T awesome-sidebar | assert_contains 'down'

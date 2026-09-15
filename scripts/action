@@ -107,6 +107,8 @@ enable_group() {
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_query "$saved_query" || return 1
     tas_tmux respawn-pane -k -t "$sidebar" "$ROOT/sidebar-view" "$group" "$sidebar" "$width" "$icons" || return 1
   fi
+  [ -n "$(tas_tmux show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)" ] ||
+    tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "$window" || return 1
   tas_signal_group "$group"
 }
 
@@ -249,7 +251,18 @@ navigate_action() {
 action=${1-}; [ -n "$action" ] || usage
 case $action in
   auto-enable) [ "$#" -eq 1 ] || usage; auto_enable;;
-  enter) [ "$#" -eq 4 ] || usage; shift; tas_validate_id "$1" session && tas_validate_id "$2" window && tas_validate_id "$3" pane || exit 2; tas_tmux has-session -t "$1" 2>/dev/null || exit 0; group=$(tas_tmux show-option -qv -t "$1" @awesome_sidebar_group); [ -n "$group" ] || group="s${1#\$}-w${2#@}"; tas_with_group_lock "$group" enable_group "$@" && focus_sidebar "$2" && { tas_tmux switch-client -T awesome-sidebar 2>/dev/null || :; };;
+  enter)
+    [ "$#" -ge 4 ] && [ "$#" -le 5 ] || usage
+    session=$2; window=$3; pane=$4; client=${5-}
+    tas_validate_id "$session" session && tas_validate_id "$window" window && tas_validate_id "$pane" pane || exit 2
+    [ -z "$client" ] || tas_validate_text "$client" || exit 2
+    tas_tmux has-session -t "$session" 2>/dev/null || exit 0
+    group=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_group)
+    [ -n "$group" ] || group="s${session#\$}-w${window#@}"
+    tas_with_group_lock "$group" enable_group "$session" "$window" "$pane" || exit $?
+    focus_sidebar "$window" || exit $?
+    [ -z "$client" ] || tas_tmux switch-client -c "$client" -T awesome-sidebar
+    ;;
   enable) [ "$#" -eq 4 ] || usage; shift; tas_with_group_lock "$1" enable_group "$@";;
   disable)
     if [ "$#" -eq 2 ]; then
