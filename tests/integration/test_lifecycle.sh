@@ -28,6 +28,11 @@ while [ "$i" -lt 20 ]; do
   sleep 0.05
 done
 assert_eq 1 "$new_window_ready" "new windows are auto-enabled"
+first_group=$(tmux_test show-option -qv -t "$window_id" @awesome_sidebar_group)
+second_group=$(tmux_test show-option -qv -t "$new_host_window" @awesome_sidebar_group)
+[ "$first_group" != "$second_group" ]
+assert_eq 0 "$(tmux_test show-option -qv -t "$window_id" @awesome_sidebar_host_index)"
+assert_eq 1 "$(tmux_test show-option -qv -t "$new_host_window" @awesome_sidebar_host_index)"
 group=$(tmux_test show-option -qv -t "$session_id" @awesome_sidebar_group)
 mkdir -p "$TMUX_TMPDIR/project"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" session-new "$group" "$TMUX_TMPDIR/project" 'Project One'
