@@ -19,7 +19,6 @@ context_group() {
   session=$1; window=$2; pane=$3
   tas_validate_id "$session" session && tas_validate_id "$window" window && tas_validate_id "$pane" pane || return 2
   [ "$(context_window "$pane")" = "$window" ] || return 1
-  window_has_link "$session" "$window" || return 1
   group=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_group)
   [ -n "$group" ] || return 1
   tas_validate_text "$group" || return 2
@@ -40,10 +39,17 @@ group_host() {
     window=$(context_window "$context") || return 2
     actual=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_group)
     [ "$actual" = "$group" ] || return 1
-    context_session "$context"
+    host=$(context_session "$context")
+    [ -n "$host" ] || host="\$${group#s}"
+    case "$host" in *-w*) host=${host%%-w*};; esac
+    printf '%s\n' "$host"
     return 0
   fi
-  tas_tmux list-sessions -F '#{session_id} #{session_name} #{@awesome_sidebar_group}' | awk -v g="$group" '$3==g && $2 !~ /^__awesome_sidebar_/{print $1; exit}'
+  host=$(tas_tmux list-sessions -F '#{session_id} #{session_name} #{@awesome_sidebar_group}' | awk -v g="$group" '$3==g && $2 !~ /^__awesome_sidebar_/{print $1; exit}')
+  [ -n "$host" ] || case "$group" in
+    s[0-9]*-w[0-9]*) host="\$${group#s}"; host=${host%%-w*} ;;
+  esac
+  printf '%s\n' "$host"
 }
 window_has_link() { tas_tmux list-windows -t "$1" -F '#{window_id}' | awk -v w="$2" '$0==w{ok=1} END{exit !ok}'; }
 
@@ -115,6 +121,23 @@ disable_group() {
     [ "$(tas_tmux display-message -p -t "$sidebar" '#{@awesome_sidebar_kind}')" = sidebar ] && tas_tmux kill-pane -t "$sidebar" || :
   done
   tas_tmux set-option -w -t "$window" @awesome_sidebar_enabled off || return 1
+  tas_tmux kill-session -t "$storage" 2>/dev/null || :
+}
+
+disable_session() {
+  session=$1; group=$2
+  tas_validate_id "$session" session || return 2
+  storage=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_storage)
+  [ -n "$storage" ] || return 1
+  for window in $(tas_tmux list-windows -t "$storage" -F '#{window_id}'); do
+    window_has_link "$session" "$window" || tas_tmux link-window -s "$window" -t "$session:" || return 1
+  done
+  for window in $(tas_tmux list-windows -t "$session" -F '#{window_id}'); do
+    for sidebar in $(tas_tmux list-panes -t "$window" -F '#{pane_id}'); do
+      [ "$(tas_tmux display-message -p -t "$sidebar" '#{@awesome_sidebar_kind}')" = sidebar ] && tas_tmux kill-pane -t "$sidebar" || :
+    done
+  done
+  tas_tmux set-option -t "$session" @awesome_sidebar_enabled off || return 1
   tas_tmux kill-session -t "$storage" 2>/dev/null || :
 }
 
@@ -210,10 +233,13 @@ case $action in
       session=$2; tas_validate_id "$session" session || exit 2
       window=$(tas_tmux list-windows -t "$session" -F '#{window_id}' | sed -n '1p')
       pane=$(tas_tmux list-panes -t "$window" -F '#{pane_id}' | sed -n '1p')
-      group=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_group)
+      group=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_group)
+      tas_with_group_lock "$group" disable_session "$session" "$group"
+      exit $?
     elif [ "$#" -eq 4 ]; then
       session=$2; window=$3; pane=$4
       group=$(context_group "$session" "$window" "$pane") || exit $?
+      session=$(group_host "$group" "$pane") || exit $?
     else
       usage
     fi
