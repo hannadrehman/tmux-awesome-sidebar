@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+. "$ROOT/lib/common.sh"
+. "$ROOT/lib/tree.sh"
+group=${1-}; pane_id=${2-}; width=$(tas_clamp_width "${3:-28}"); icons=${4:-ascii}; cursor=${5-}
+[ -n "$group" ] || { echo Sessions; exit 0; }
+while :; do
+  tas_build_rows "$group" | tas_render "$width" "$icons" "$cursor"
+  tas_tmux wait-for "awesome-sidebar-refresh-${pane_id#%}" || exit 0
+done

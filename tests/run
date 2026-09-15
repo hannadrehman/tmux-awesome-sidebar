@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+kind=${1:-all}; shift || :
+case $kind in unit|integration) dirs=$kind;; all|coverage) dirs='unit integration';; *) exit 2;; esac
+status=0
+for dir in $dirs; do
+  if [ "$#" -gt 0 ]; then
+    for name in "$@"; do
+      case $name in test_*.sh) file=$ROOT/tests/$dir/$name;; *) file=$ROOT/tests/$dir/${name}.sh;; esac
+      [ -f "$file" ] || continue
+      sh "$file" || status=1
+    done
+  else
+    for file in "$ROOT/tests/$dir"/test_*.sh; do [ -f "$file" ] || continue; sh "$file" || status=1; done
+  fi
+done
+exit "$status"

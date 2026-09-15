@@ -1,0 +1,13 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  verify:
+    strategy:
+      matrix: { os: [ubuntu-latest, macos-latest] }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then sudo apt-get update && sudo apt-get install -y tmux shellcheck git; else brew install tmux shellcheck git; fi
+      - run: make verify
