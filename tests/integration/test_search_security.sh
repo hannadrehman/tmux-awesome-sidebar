@@ -27,6 +27,9 @@ assert_eq "$payload" "$(tmux_test show-option -pqv -t "$sidebar" @awesome_sideba
 assert_failure test -e "$marker"
 assert_file_contains "$PROJECT_ROOT/tmux-awesome-sidebar.tmux" 'set-option -p @awesome_sidebar_pending_query "%%%"'
 binding=$(tmux_test list-keys -T awesome-sidebar /)
-assert_not_contains 'search-update' <<EOF
+assert_contains 'set-option -p @awesome_sidebar_pending_query' <<EOF
+$binding
+EOF
+assert_not_contains 'run-shell ... %%%' <<EOF
 $binding
 EOF

@@ -264,7 +264,32 @@ case $action in
   navigate) [ "$#" -eq 3 ] || usage; navigate_action "$2" "$3";;
   rename) [ "$#" -eq 3 ] || usage; tas_validate_id "$2" pane || exit 2; tas_set_manual_name "$2" "$3";;
   rename-clear) [ "$#" -eq 2 ] || usage; tas_validate_id "$2" pane || exit 2; tas_clear_manual_name "$2";;
-  search-update) [ "$#" -ge 3 ] && [ "$#" -le 4 ] || usage; tas_validate_text "$3" || exit 2; context=${4-}; host=$(group_host "$2" "$context"); [ -n "$host" ] || exit 1; if [ -n "$context" ]; then pane=$context; old=$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_query); [ -n "$old" ] || { tas_tmux set-option -p -t "$pane" @awesome_sidebar_pre_search_cursor "$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_cursor)"; tas_tmux set-option -p -t "$pane" @awesome_sidebar_pre_search_collapsed "$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_collapsed)"; }; tas_tmux set-option -p -t "$pane" @awesome_sidebar_query "$3"; else tas_tmux set-option -t "$host" @awesome_sidebar_query "$3"; fi; tas_signal_group "$2";;
+  search-update)
+    if [ "$#" -eq 3 ]; then
+      group=$2
+      context=$3
+      tas_validate_id "$context" pane || exit 2
+      query=$(tas_tmux show-option -p -qv -t "$context" @awesome_sidebar_pending_query)
+      tas_validate_text "$query" || exit 2
+      tas_tmux set-option -pu -t "$context" @awesome_sidebar_pending_query || exit 1
+    elif [ "$#" -ge 4 ] && [ "$#" -le 5 ]; then
+      group=$2
+      query=$3
+      context=${4-}
+      tas_validate_text "$query" || exit 2
+    else
+      usage
+    fi
+    host=$(group_host "$group" "$context"); [ -n "$host" ] || exit 1
+    if [ -n "$context" ]; then
+      pane=$context
+      old=$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_query)
+      [ -n "$old" ] || { tas_tmux set-option -p -t "$pane" @awesome_sidebar_pre_search_cursor "$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_cursor)"; tas_tmux set-option -p -t "$pane" @awesome_sidebar_pre_search_collapsed "$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_collapsed)"; }
+      tas_tmux set-option -p -t "$pane" @awesome_sidebar_query "$query"
+    else
+      tas_tmux set-option -t "$host" @awesome_sidebar_query "$query"
+    fi
+    tas_signal_group "$group";;
   search-clear) [ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage; context=${3-}; host=$(group_host "$2" "$context"); [ -n "$host" ] || exit 1; if [ -n "$context" ]; then pane=$context; tas_tmux set-option -p -t "$pane" @awesome_sidebar_query ''; saved=$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_pre_search_cursor); [ -n "$saved" ] && tas_tmux set-option -p -t "$pane" @awesome_sidebar_cursor "$saved"; saved=$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_pre_search_collapsed); tas_tmux set-option -p -t "$pane" @awesome_sidebar_collapsed "$saved"; tas_tmux set-option -pu -t "$pane" @awesome_sidebar_pre_search_cursor; tas_tmux set-option -pu -t "$pane" @awesome_sidebar_pre_search_collapsed; else tas_tmux set-option -t "$host" @awesome_sidebar_query ''; fi; tas_signal_group "$2";;
   search-activate) [ "$#" -ge 3 ] && [ "$#" -le 4 ] || usage; group=$2; target=$3; context=${4-}; tas_validate_text "$target" || exit 2; if tas_validate_id "$target" pane 2>/dev/null; then tas_tmux select-pane -t "$target"; elif tas_validate_id "$target" window 2>/dev/null; then session-select "$group" "$target" "$context"; elif [ "${target#worktree:}" != "$target" ]; then "$ROOT/discover-worktrees" --activate "$group" "${target#worktree:}"; else exit 2; fi;;
   *) usage;;
