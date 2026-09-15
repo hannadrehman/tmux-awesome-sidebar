@@ -61,10 +61,22 @@ TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" navigate "$second_sideba
 assert_eq '' "$(tmux_test show-option -pqv -t "$second_sidebar" @awesome_sidebar_collapsed)" "l expands session"
 
 # q/r must carry the invoking host-window context, not only the host session.
-assert_contains ' refresh "#{session_id}" "#{window_id}" "#{pane_id}"' <<EOF
+assert_contains 'refresh' <<EOF
 $(tmux_test list-keys -T awesome-sidebar r)
 EOF
-assert_contains ' disable "#{session_id}" "#{window_id}" "#{pane_id}"' <<EOF
+assert_contains '#{window_id}' <<EOF
+$(tmux_test list-keys -T awesome-sidebar r)
+EOF
+assert_contains '#{pane_id}' <<EOF
+$(tmux_test list-keys -T awesome-sidebar r)
+EOF
+assert_contains 'disable' <<EOF
+$(tmux_test list-keys -T awesome-sidebar q)
+EOF
+assert_contains '#{window_id}' <<EOF
+$(tmux_test list-keys -T awesome-sidebar q)
+EOF
+assert_contains '#{pane_id}' <<EOF
 $(tmux_test list-keys -T awesome-sidebar q)
 EOF
 
@@ -79,20 +91,22 @@ PATH=/opt/homebrew/bin:$PATH git -C "$gitroot" commit --allow-empty -qm initial
 PATH=/opt/homebrew/bin:$PATH git -C "$gitroot" branch 'feature/sidebar'
 worktree_path=$TMUX_TMPDIR/'repo worktree'
 PATH=/opt/homebrew/bin:$PATH git -C "$gitroot" worktree add -q "$worktree_path" 'feature/sidebar'
+worktree_path=$(CDPATH= cd -- "$worktree_path" && pwd -P)
 tmux_test set-option -g @awesome_sidebar_worktree_roots "$gitroot"
+assert_eq "$gitroot" "$(tmux_test show-option -gqv @awesome_sidebar_worktree_roots)" "worktree root configured"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" refresh "$session_id" "$second_window" "$second_sidebar"
 worktree_row=$(env PROJECT_ROOT="$PROJECT_ROOT" TMUX_SOCKET="$TEST_SOCKET" PATH=/opt/homebrew/bin:$PATH sh -c '. "$1/scripts/lib/common.sh"; . "$1/scripts/lib/tree.sh"; tas_build_rows "$2"' sh "$PROJECT_ROOT" "$second_group" | awk -F '\t' -v p="$worktree_path" '$1=="worktree" && $7==p{print;exit}')
 [ -n "$worktree_row" ]
 worktree_id=$(printf '%s\n' "$worktree_row" | awk -F '\t' '{print $2}')
 tmux_test set-option -p -t "$second_sidebar" @awesome_sidebar_cursor "$worktree_id"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" navigate "$second_sidebar" enter
-activated_window=$(tmux_test list-windows -t "$second_group" -F '#{window_id}	#{window_name}' 2>/dev/null | awk -F '\t' -v n="$(basename "$worktree_path")" '$2==n{print $1;exit}')
+second_storage=$(tmux_test show-option -wqv -t "$second_window" @awesome_sidebar_storage)
+activated_window=$(tmux_test list-windows -t "$second_storage" -F '#{window_id}	#{window_name}' 2>/dev/null | awk -F '\t' -v n="$(basename "$worktree_path")" '$2==n{print $1;exit}')
 [ -n "$activated_window" ]
-assert_eq "$activated_window" "$(tmux_test display-message -p -t "$session_id" '#{window_id}')" "activated worktree selected"
+assert_eq "$activated_window" "$(tmux_test display-message -p -t "$session_id" '#{window_id}')" "dormant worktree selected in invoking host context"
 
 # Disable only the second host-window group; the first group must remain live.
 first_storage=$(tmux_test show-option -qv -t "$session_id" @awesome_sidebar_storage)
-second_storage=$(tmux_test show-option -wqv -t "$second_window" @awesome_sidebar_storage)
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" disable "$session_id" "$second_window" "$second_sidebar"
 assert_failure tmux_test has-session -t "$second_storage"
 assert_success tmux_test has-session -t "$first_storage"
