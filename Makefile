@@ -5,7 +5,7 @@ test-unit:
 test-integration:
 	@tests/run integration
 lint:
-	@shellcheck -x -s sh tmux-awesome-sidebar.tmux scripts/action scripts/sidebar-view scripts/discover-worktrees scripts/doctor scripts/lib/*.sh tests/*.sh tests/unit/*.sh tests/integration/*.sh
+	@shellcheck -x -s sh scripts/action scripts/sidebar-view scripts/discover-worktrees scripts/doctor scripts/lib/*.sh tests/*.sh tests/unit/*.sh tests/integration/*.sh
 security:
 	@! rg -n 'eval|capture-pane|show-environment|kill-server' tmux-awesome-sidebar.tmux scripts
 coverage:

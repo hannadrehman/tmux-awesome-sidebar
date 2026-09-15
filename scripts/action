@@ -1,20 +1,28 @@
 #!/bin/sh
 set -u
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
+PROJECT_ROOT=$(CDPATH= cd -- "$ROOT/.." && pwd -P); export PROJECT_ROOT
 . "$ROOT/lib/common.sh"
 . "$ROOT/lib/tree.sh"
 . "$ROOT/lib/naming.sh"
-bad() { return 2; }
-valid_group() { tas_validate_text "${1-}" && [ -n "${1-}" ]; }
+
+usage() { echo "usage: action <action> ..." >&2; exit 2; }
+group_storage() { tas_tmux list-sessions -F '#{session_name}\t#{@awesome_sidebar_group}\t#{@awesome_sidebar_storage}' | awk -F '\t' -v g="$1" '$2==g && $3!=""{print $1; exit}'; }
+group_host() { tas_tmux list-sessions -F '#{session_id}\t#{@awesome_sidebar_group}\t#{@awesome_sidebar_host_session}\t#{@awesome_sidebar_enabled}' | awk -F '\t' -v g="$1" '$2==g && $3==$1 && $4=="on"{print $1; exit}'; }
+window_has_link() { tas_tmux list-windows -t "$1" -F '#{window_id}' | awk -v w="$2" '$0==w{ok=1} END{exit !ok}'; }
+
 enable_group() {
   session=$1; window=$2; pane=$3
-  tas_validate_id "$session" session || return 2
-  tas_validate_id "$window" window || return 2
-  tas_validate_id "$pane" pane || return 2
+  tas_validate_id "$session" session && tas_validate_id "$window" window && tas_validate_id "$pane" pane || return 2
+  kind=$(tas_tmux display-message -p -t "$pane" '#{@awesome_sidebar_kind}')
+  [ "$kind" = sidebar ] && return 0
   group=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_group)
   [ -n "$group" ] || group="s${session#\$}-w${window#@}"
+  tas_validate_text "$group" || return 2
   storage=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_storage)
   [ -n "$storage" ] || storage="__awesome_sidebar_$group"
+  width=$(tas_clamp_width "$(tas_tmux show-option -gqv @awesome_sidebar_width)")
+  icons=$(tas_tmux show-option -gqv @awesome_sidebar_icons); [ "$icons" = nerd ] || icons=ascii
   tas_tmux set-option -t "$session" @awesome_sidebar_enabled on || return 1
   tas_tmux set-option -t "$session" @awesome_sidebar_group "$group" || return 1
   tas_tmux set-option -t "$session" @awesome_sidebar_storage "$storage" || return 1
@@ -23,45 +31,98 @@ enable_group() {
   tas_tmux set-option -w -t "$window" @awesome_sidebar_kind content || return 1
   if ! tas_tmux has-session -t "$storage" 2>/dev/null; then
     tas_tmux new-session -d -s "$storage" -n bootstrap -c "$(tas_tmux display-message -p -t "$pane" '#{pane_current_path}')" || return 1
+    tas_tmux set-option -t "$storage" @awesome_sidebar_group "$group" || return 1
+    tas_tmux set-option -t "$storage" @awesome_sidebar_storage "$storage" || return 1
   fi
-  if ! tas_tmux list-windows -t "$storage" -F '#{window_id}' | grep -Fqx "$window"; then
-    tas_tmux link-window -s "$window" -t "$storage:" || return 1
-  fi
-  bootstrap=$(tas_tmux list-windows -t "$storage" -F '#{window_id}\t#{window_name}' | awk -F '\t' '$2=="bootstrap"{print $1;exit}')
-  [ -z "$bootstrap" ] || [ "$bootstrap" = "$window" ] || tas_tmux kill-window -t "$storage:bootstrap" || return 1
-  if ! tas_tmux list-panes -t "$window" -F '#{@awesome_sidebar_kind}' | grep -qx sidebar; then
-    sidebar=$(tas_tmux split-window -d -h -p 28 -t "$window" -P -F '#{pane_id}') || return 1
+  window_has_link "$storage" "$window" || tas_tmux link-window -s "$window" -t "$storage:" || return 1
+  bootstrap=$(tas_tmux list-windows -t "$storage" -F '#{window_id}\t#{window_name}' | awk -F '\t' '$2=="bootstrap"{print $1; exit}')
+  [ -z "$bootstrap" ] || [ "$bootstrap" = "$window" ] || tas_tmux kill-window -t "$bootstrap" || return 1
+  if ! tas_tmux list-panes -t "$window" -F '#{@awesome_sidebar_kind}' | grep -Fqx sidebar; then
+    sidebar=$(tas_tmux split-window -d -h -p "$width" -t "$window" -P -F '#{pane_id}') || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_kind sidebar || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_group "$group" || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "" || return 1
-    tas_tmux respawn-pane -k -t "$sidebar" "$ROOT/sidebar-view $group $sidebar 28 ascii" || return 1
+    tas_tmux respawn-pane -k -t "$sidebar" "$ROOT/sidebar-view" "$group" "$sidebar" "$width" "$icons" || return 1
   fi
+  tas_signal_group "$group"
 }
+
 session_new() {
-  group=$1; path=$2; name=$3; valid_group "$group" || return 2; tas_validate_text "$path" || return 2; tas_validate_text "$name" || return 2
-  storage=$(tas_tmux list-sessions -F '#{session_name}\t#{@awesome_sidebar_group}\t#{@awesome_sidebar_storage}' | awk -F '\t' -v g="$group" '$2==g{print $1;exit}')
-  [ -n "$storage" ] || return 1
-  tas_tmux new-window -d -t "$storage" -n "$name" -c "$path" || return 1
-  newwin=$(tas_tmux list-windows -t "$storage" -F '#{window_id}' | tail -n 1)
-  tas_tmux set-option -w -t "$newwin" @awesome_sidebar_group "$group"
-  tas_tmux set-option -w -t "$newwin" @awesome_sidebar_kind content
+  group=$1; path=$2; name=$3
+  tas_validate_text "$group" && tas_validate_text "$path" && tas_validate_text "$name" || return 2
+  storage=$(group_storage "$group"); [ -n "$storage" ] || return 1
+  [ -d "$path" ] || return 1
+  win=$(tas_tmux new-window -d -t "$storage" -n "$name" -c "$path" -P -F '#{window_id}') || return 1
+  tas_tmux set-option -w -t "$win" @awesome_sidebar_group "$group" || return 1
+  tas_tmux set-option -w -t "$win" @awesome_sidebar_kind content || return 1
+  tas_tmux set-option -w -t "$win" @awesome_sidebar_name "$name" || return 1
+  tas_signal_group "$group"
 }
-case ${1-} in
-  enter) [ "$#" -eq 4 ] || exit 2; shift; tas_validate_id "$1" session || exit 2; if tas_tmux has-session -t "$1" 2>/dev/null; then enable_group "$@"; else exit 0; fi;;
-  enable) [ "$#" -ge 4 ] || exit 2; shift; tas_with_group_lock "$1" enable_group "$@";;
-  disable) [ "$#" -eq 2 ] || exit 2; tas_validate_id "$2" session || exit 2; tas_tmux set-option -t "$2" @awesome_sidebar_enabled off || exit 1; for w in $(tas_tmux list-windows -t "$2" -F '#{window_id}'); do for p in $(tas_tmux list-panes -t "$w" -F '#{pane_id}'); do [ "$(tas_tmux display-message -p -t "$p" '#{@awesome_sidebar_kind}')" = sidebar ] || continue; tas_validate_id "$p" pane && tas_tmux kill-pane -t "$w" || :; done; done;;
-  session-new) [ "$#" -eq 4 ] || exit 2; shift; session_new "$@";;
-  session-select) [ "$#" -eq 3 ] || exit 2; tas_validate_id "$2" window || exit 2; tas_tmux select-window -t "$2";;
-  session-delete) [ "$#" -eq 4 ] || exit 2; tas_validate_id "$3" window || exit 2; [ "$4" = confirmed-yes ] || exit 2; tas_tmux kill-window -t "$3";;
-  split) [ "$#" -ge 3 ] || exit 2; case $3 in horizontal) flag=h;; vertical) flag=v;; *) exit 2;; esac; case ${4-} in ''|*[!0-9]*) [ "$#" -eq 3 ] || exit 2;; *) [ "$4" -ge 1 ] && [ "$4" -le 99 ] || exit 2; tas_tmux split-window -"$flag" -p "$4";; esac;;
-  pane-select) [ "$#" -eq 3 ] || exit 2; tas_validate_id "$3" pane || exit 2; tas_tmux select-pane -t "$3";;
-  refresh) [ "$#" -eq 2 ] || exit 2; tas_signal_group "$2";;
+
+disable_group() {
+  session=$1; tas_validate_id "$session" session || return 2
+  group=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_group); [ -n "$group" ] || return 1
+  storage=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_storage)
+  for win in $(tas_tmux list-windows -t "$storage" -F '#{window_id}'); do
+    window_has_link "$session" "$win" || tas_tmux link-window -s "$win" -t "$session:" || return 1
+  done
+  for win in $(tas_tmux list-windows -t "$session" -F '#{window_id}'); do
+    for pane in $(tas_tmux list-panes -t "$win" -F '#{pane_id}'); do
+      [ "$(tas_tmux display-message -p -t "$pane" '#{@awesome_sidebar_kind}')" = sidebar ] && tas_tmux kill-pane -t "$pane" || :
+    done
+  done
+  tas_tmux set-option -t "$session" @awesome_sidebar_enabled off || return 1
+  tas_tmux kill-session -t "$storage" 2>/dev/null || :
+}
+
+navigate_action() {
+  pane=$1; direction=$2
+  tas_validate_id "$pane" pane || return 2
+  group=$(tas_tmux display-message -p -t "$pane" '#{@awesome_sidebar_group}')
+  [ -n "$group" ] || return 1
+  case "$direction" in
+    up|down|home|end|gg|G)
+      cursor=$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_cursor)
+      next=$(tas_build_rows "$group" | tas_tree_visible "$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_collapsed)" | tas_cursor_move "$cursor" "$direction")
+      [ -n "$next" ] && tas_tmux set-option -p -t "$pane" @awesome_sidebar_cursor "$next" || : ;;
+    parent|child)
+      cursor=$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_cursor)
+      [ -n "$cursor" ] || return 0
+      if [ "$direction" = parent ]; then
+        next=$(tas_build_rows "$group" | tas_parent_for_row "$cursor")
+        [ -n "$next" ] && tas_tmux set-option -p -t "$pane" @awesome_sidebar_cursor "$next" || :
+      else
+        next=$(tas_build_rows "$group" | awk -F '\t' -v p="$cursor" '$3==p{print $2;exit}')
+        [ -n "$next" ] && tas_tmux set-option -p -t "$pane" @awesome_sidebar_cursor "$next" || :
+      fi ;;
+    enter)
+      cursor=$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_cursor)
+      row=$(tas_build_rows "$group" | awk -F '\t' -v id="$cursor" '$2==id{print;exit}')
+      [ -n "$row" ] || return 0
+      kind=$(printf '%s\n' "$row" | awk -F '\t' '{print $1}')
+      if [ "$kind" = pane ]; then tas_tmux select-pane -t "$cursor"; else session-select "$group" "$cursor"; fi ;;
+    *) return 2;;
+  esac
+  tas_signal_group "$group"
+}
+
+action=${1-}; [ -n "$action" ] || usage
+case $action in
+  enter) [ "$#" -eq 4 ] || usage; shift; tas_validate_id "$1" session && tas_validate_id "$2" window && tas_validate_id "$3" pane || exit 2; tas_tmux has-session -t "$1" 2>/dev/null || exit 0; group=$(tas_tmux show-option -qv -t "$1" @awesome_sidebar_group); [ -n "$group" ] || group="s${1#\$}-w${2#@}"; tas_with_group_lock "$group" enable_group "$@";;
+  enable) [ "$#" -eq 4 ] || usage; shift; tas_with_group_lock "$1" enable_group "$@";;
+  disable) [ "$#" -eq 2 ] || usage; group=$(tas_tmux show-option -qv -t "$2" @awesome_sidebar_group); tas_with_group_lock "$group" disable_group "$2";;
+  session-new) [ "$#" -eq 4 ] || usage; shift; tas_with_group_lock "$1" session_new "$@";;
+  session-select) [ "$#" -eq 3 ] || usage; group=$2; win=$3; tas_validate_id "$win" window || exit 2; host=$(group_host "$group"); storage=$(group_storage "$group"); [ -n "$host" ] && [ -n "$storage" ] || exit 1; window_has_link "$storage" "$win" || exit 1; old=$(tas_tmux list-windows -t "$host" -F '#{window_id}\t#{@awesome_sidebar_group}\t#{@awesome_sidebar_kind}' | awk -F '\t' -v g="$group" '$2==g && $3=="content"{print $1;exit}'); window_has_link "$host" "$win" || tas_tmux link-window -s "$win" -t "$host:" || exit 1; tas_tmux select-window -t "$host:$win" 2>/dev/null || tas_tmux select-window -t "$win" || exit 1; [ -z "$old" ] || [ "$old" = "$win" ] || tas_tmux unlink-window -t "$host:$old" 2>/dev/null || :;;
+  session-delete) [ "$#" -eq 4 ] || usage; [ "$4" = confirmed-yes ] || exit 2; tas_validate_id "$3" window || exit 2; tas_tmux kill-window -t "$3";;
+  split) [ "$#" -ge 3 ] || usage; case $3 in horizontal) flag=h;; vertical) flag=v;; *) exit 2;; esac; host=$(group_host "$2"); [ -n "$host" ] || exit 1; target=$(tas_tmux display-message -p -t "$host" '#{window_id}'); [ "$#" -eq 3 ] && tas_tmux split-window -"$flag" -t "$target" || { [ "$#" -eq 4 ] || exit 2; case $4 in *[!0-9]*|'') exit 2;; esac; [ "$4" -ge 1 ] && [ "$4" -le 99 ] || exit 2; tas_tmux split-window -"$flag" -p "$4" -t "$target"; };;
+  pane-select) [ "$#" -eq 3 ] || usage; tas_validate_id "$3" pane || exit 2; tas_tmux select-pane -t "$3";;
+  refresh) [ "$#" -eq 2 ] || usage; tas_signal_group "$2";;
   refresh-from-hook) group=$(tas_tmux display-message -p '#{@awesome_sidebar_group}'); [ -n "$group" ] && tas_signal_group "$group" || :;;
-  navigate) [ "$#" -eq 3 ] || exit 2; case $3 in up|down|home|end|gg) tas_cursor_move "$2" "$3";; *) exit 2;; esac;;
-  rename) [ "$#" -eq 3 ] || exit 2; tas_validate_id "$2" pane || exit 2; tas_set_manual_name "$2" "$3";;
-  rename-clear) [ "$#" -eq 2 ] || exit 2; tas_validate_id "$2" pane || exit 2; tas_clear_manual_name "$2";;
-  search-update) [ "$#" -eq 3 ] || exit 2; tas_validate_text "$3" || exit 2; tas_tmux set-option -g @awesome_sidebar_query "$3";;
-  search-clear) tas_tmux set-option -gu @awesome_sidebar_query;;
-  search-activate) [ "$#" -eq 3 ] || exit 2; tas_validate_text "$3" || exit 2;;
-  *) exit 2;;
+  navigate) [ "$#" -eq 3 ] || usage; navigate_action "$2" "$3";;
+  rename) [ "$#" -eq 3 ] || usage; tas_validate_id "$2" pane || exit 2; tas_set_manual_name "$2" "$3";;
+  rename-clear) [ "$#" -eq 2 ] || usage; tas_validate_id "$2" pane || exit 2; tas_clear_manual_name "$2";;
+  search-update) [ "$#" -eq 3 ] || usage; tas_validate_text "$3" || exit 2; host=$(group_host "$2"); [ -n "$host" ] || exit 1; tas_tmux set-option -t "$host" @awesome_sidebar_query "$3"; tas_signal_group "$2";;
+  search-clear) [ "$#" -eq 2 ] || usage; host=$(group_host "$2"); [ -n "$host" ] || exit 1; tas_tmux set-option -t "$host" @awesome_sidebar_query ''; tas_signal_group "$2";;
+  search-activate) [ "$#" -eq 3 ] || usage; group=$2; target=$3; tas_validate_text "$target" || exit 2; if tas_validate_id "$target" pane 2>/dev/null; then tas_tmux select-pane -t "$target"; elif tas_validate_id "$target" window 2>/dev/null; then session-select "$group" "$target"; elif [ "${target#worktree:}" != "$target" ]; then "$ROOT/discover-worktrees" --activate "$group" "${target#worktree:}"; else exit 2; fi;;
+  *) usage;;
 esac

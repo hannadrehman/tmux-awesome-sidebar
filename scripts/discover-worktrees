@@ -1,9 +1,47 @@
 #!/bin/sh
-set -eu
-LIB_ROOT=${PROJECT_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/lib" && pwd -P)}
-. "$LIB_ROOT/scripts/lib/common.sh"
-tas_parse_worktrees() { repository_name=$1; awk -v repo="$repository_name" 'BEGIN{RS="";FS="\n"} {p=b=""; for(i=1;i<=NF;i++){if($i~/^worktree /)p=substr($i,10); if($i~/^branch /)b=substr($i,15)} if(p!="") print "worktree\t" repo "\t" b "\t" p}'; }
-tas_discover_roots() { oldIFS=$IFS; IFS=:; for root in $1; do [ -d "$root" ] || continue; top=$(CDPATH= cd -- "$root" 2>/dev/null && pwd -P) || continue; git -C "$top" worktree list --porcelain 2>/dev/null | tas_parse_worktrees "$(basename "$top")"; done; IFS=$oldIFS; }
-tas_worktree_status() { [ -d "$1" ] || { echo missing; return 0; }; git -C "$1" diff --quiet 2>/dev/null && echo clean || echo dirty; }
-tas_merge_worktrees_with_sessions() { group=$1; valid_group=${group#?}; tas_discover_roots "$(tas_tmux show-option -gqv @awesome_sidebar_worktree_roots)"; }
-tas_worktree_activate() { group=$1; path=$2; [ -d "$path" ] || return 1; tas_validate_text "$path" || return 2; "$PROJECT_ROOT/scripts/action" session-new "$group" "$path" "$(basename "$path")"; }
+set -u
+ROOT=${PROJECT_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)}
+. "$ROOT/scripts/lib/common.sh"
+
+tas_parse_worktrees() {
+  repository_name=${1-}
+  LC_ALL=C awk -v repo="$repository_name" '
+    function emit(    out) {
+      if (path == "") return
+      if (branch == "") branch="(detached)"
+      if (path !~ /[\001-\011\013-\037\177\033]/ && branch !~ /[\001-\011\013-\037\177\033]/)
+        print "worktree\t" repo "\t" branch "\t" path
+      path=""; branch=""
+    }
+    /^worktree / { emit(); path=substr($0,10); next }
+    /^branch / { branch=substr($0,15); next }
+    /^$/ { emit(); next }
+    END { emit() }
+  '
+}
+tas_discover_roots() {
+  roots=${1-}; oldifs=$IFS; IFS=:
+  for root in $roots; do
+    [ -d "$root" ] || continue
+    top=$(CDPATH= cd -- "$root" 2>/dev/null && pwd -P) || continue
+    repo=$(git -C "$top" rev-parse --show-toplevel 2>/dev/null) || continue
+    repo=$(CDPATH= cd -- "$repo" && pwd -P) || continue
+    git -C "$repo" worktree list --porcelain 2>/dev/null | tas_parse_worktrees "$(basename "$repo")"
+  done
+  IFS=$oldifs
+}
+tas_worktree_status() {
+  path=$1; [ -d "$path" ] || { echo missing; return 0; }
+  if git -C "$path" diff --quiet 2>/dev/null && git -C "$path" diff --cached --quiet 2>/dev/null; then echo clean; else echo dirty; fi
+}
+tas_merge_worktrees_with_sessions() {
+  group=$1; roots=$(tas_tmux show-option -gqv @awesome_sidebar_worktree_roots)
+  tas_discover_roots "$roots" | awk -F '\t' '!seen[$4]++'
+}
+tas_worktree_activate() {
+  group=$1; path=$2; tas_validate_text "$group" && tas_validate_text "$path" || return 2
+  [ -d "$path" ] || return 1
+  "$ROOT/action" session-new "$group" "$path" "$(basename "$path")"
+}
+if [ "${1-}" = --discover ]; then tas_discover_roots "${2-}"; fi
+if [ "${1-}" = --activate ]; then tas_worktree_activate "${2-}" "${3-}"; fi

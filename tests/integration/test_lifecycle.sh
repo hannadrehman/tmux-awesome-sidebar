@@ -7,5 +7,21 @@ window_id=$(tmux_test display-message -p '#{window_id}')
 pane_id=$(tmux_test display-message -p '#{pane_id}')
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$window_id" "$pane_id"
 assert_eq 2 "$(tmux_test list-panes -t "$window_id" | wc -l | awk '{print $1}')"
+sidebar=''
+for candidate in $(tmux_test list-panes -t "$window_id" -F '#{pane_id}'); do
+  [ "$(tmux_test display-message -p -t "$candidate" '#{@awesome_sidebar_kind}')" = sidebar ] && { sidebar=$candidate; break; }
+done
+[ -n "$sidebar" ]
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$window_id" "$sidebar"
+assert_eq 2 "$(tmux_test list-panes -t "$window_id" | wc -l | awk '{print $1}')"
+group=$(tmux_test show-option -qv -t "$session_id" @awesome_sidebar_group)
+mkdir -p "$TMUX_TMPDIR/project"
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" session-new "$group" "$TMUX_TMPDIR/project" 'Project One'
+storage=$(tmux_test show-option -qv -t "$session_id" @awesome_sidebar_storage)
+new_window=$(tmux_test list-windows -t "$storage" -F '#{window_id}\t#{window_name}' | awk -F '\t' '$2=="Project One"{print $1;exit}')
+[ -n "$new_window" ]
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" session-select "$group" "$new_window"
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" split "$group" horizontal 50
+[ "$(tmux_test list-panes -t "$new_window" | wc -l | awk '{print $1}')" -ge 2 ]
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" disable "$session_id"
 assert_eq 1 "$(tmux_test list-panes -t "$window_id" | wc -l | awk '{print $1}')"

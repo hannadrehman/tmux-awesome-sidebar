@@ -9,3 +9,7 @@ EOF
 assert_contains 'feature/sidebar' <<EOF
 $rows
 EOF
+detached=$(printf 'worktree /src/detached\nHEAD abc\n\n' | tas_parse_worktrees repo)
+assert_contains '(detached)' <<EOF
+$detached
+EOF
