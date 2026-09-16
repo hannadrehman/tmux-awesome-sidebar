@@ -34,9 +34,11 @@ move_cursor() {
   direction=$1
   next=$(printf '%s\n' "$rows" | tas_cursor_move "$cursor" "$direction")
   [ -n "$next" ] || return 0
+  previous=$cursor
   tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_cursor "$next"
   cursor=$next
-  last=''
+  printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query" "$previous"
+  last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
 }
 
 refresh_rows() {

@@ -17,3 +17,22 @@ EOF
 assert_contains "$(printf '\033[7m')" <<EOF
 $rendered
 EOF
+assert_contains "$(printf '\033[H')" <<EOF
+$rendered
+EOF
+assert_not_contains "$(printf '\033[2J')" <<EOF
+$rendered
+EOF
+delta=$(printf '%s\n' 'session	@1		One' 'session	@2		Two' | tas_render 28 ascii '@2' '' '@1')
+assert_contains "$(printf '\033[1;1H')" <<EOF
+$delta
+EOF
+assert_contains "$(printf '\033[2;1H')" <<EOF
+$delta
+EOF
+assert_not_contains "$(printf '\033[H')" <<EOF
+$delta
+EOF
+assert_not_contains "$(printf '\033[J')" <<EOF
+$delta
+EOF

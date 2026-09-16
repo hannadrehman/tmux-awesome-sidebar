@@ -91,14 +91,16 @@ tas_parent_for_row() { awk -F '\t' -v id="$1" '$2==id{print $3;exit}'; }
 tas_build_search_index() { tas_build_rows "$1"; }
 
 tas_render() {
-  width=$(tas_clamp_width "$1"); icons=$2; cursor=$3; query=${4-}
-  printf '\033[2J\033[H'
+  width=$(tas_clamp_width "$1"); icons=$2; cursor=$3; query=${4-}; previous=${5-}
+  # Repaint in place. Clearing the entire terminal here causes a visible blank
+  # frame between every cursor movement in tmux.
+  [ -n "$previous" ] || printf '\033[H'
   search_awk=${TAS_SEARCH_AWK:-${PROJECT_ROOT:-.}/scripts/search.awk}
   if [ -n "$query" ]; then
     awk -v query="$query" -f "$search_awk" | awk -F '\t' '{sub(/^[^\t]*\t/, ""); print}'
   else
     cat
-  fi | awk -F '\t' -v w="$width" -v i="$icons" -v c="$cursor" '
+  fi | awk -F '\t' -v w="$width" -v i="$icons" -v c="$cursor" -v p="$previous" '
   BEGIN { e=sprintf("%c",27) }
   function shorten(s,n) { return substr(s,1,n) }
   {
@@ -108,6 +110,12 @@ tas_render() {
     if ($1=="session") text=e "[1m" text e "[22m"
     if ($2==c) text=e "[7m" text e "[0m"
     if ($9=="dead") text=e "[2m" text e "[22m"
-    print text
-  }'
+    if (p!="") {
+      if ($2==p || $2==c) printf e "[%d;1H" e "[2K%s", NR, text
+      next
+    }
+    print e "[2K" text
+  }
+  END { if (p=="") printf e "[J" }
+  '
 }
