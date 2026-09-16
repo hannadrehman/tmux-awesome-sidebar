@@ -34,12 +34,11 @@ assert_eq 0 "$(tmux_test display-message -p -t "$second_sidebar" '#{pane_left}')
 # Discovery uses a content pane's path even while the sidebar is focused.
 tmux_test select-pane -t "$second_sidebar"
 
-# Every native window is a top-level row. Each one renders the repository's
-# worktrees directly beneath it and no pane rows are present.
+# Every native window is a top-level row. A repository's worktree set is
+# rendered once beneath its first window, rather than repeated per window.
 rows=$(env PROJECT_ROOT="$PROJECT_ROOT" TMUX_SOCKET="$TEST_SOCKET" sh -c '. "$1/scripts/lib/common.sh"; . "$1/scripts/lib/tree.sh"; tas_build_rows "$2"' sh "$PROJECT_ROOT" "$session_id")
 expected=$(tmux_test list-windows -t "$session_id" | wc -l | awk '{print $1}')
 assert_eq "$expected" "$(printf '%s\n' "$rows" | awk -F '\t' '$1=="session"{n++} END{print n+0}')" "one row per tmux window"
 assert_eq 0 "$(printf '%s\n' "$rows" | awk -F '\t' '$1=="pane"{n++} END{print n+0}')" "no pane rows"
-assert_eq "$((expected * 2))" "$(printf '%s\n' "$rows" | awk -F '\t' '$1=="worktree"{n++} END{print n+0}')" "worktrees nested under every window"
+assert_eq 2 "$(printf '%s\n' "$rows" | awk -F '\t' '$1=="worktree"{n++} END{print n+0}')" "repository worktrees are rendered once"
 printf '%s\n' "$rows" | awk -F '\t' '$1=="worktree" && $3==""{exit 1}'
-printf '%s\n' "$rows" | awk -F '\t' -v w="$second_window" '$1=="session"{parent=$2;next}$1=="worktree"&&parent==w&&$3!=w{exit 1}'

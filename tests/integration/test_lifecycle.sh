@@ -39,6 +39,7 @@ active_sidebar=$(tmux_test list-panes -t "$second_window" -F "#{pane_id}${tab}#{
 [ -n "$active_sidebar" ]
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '106) move_cursor down'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '10|13) activate_cursor'
+assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" "trap 'exit 0' HUP INT TERM"
 
 new_window=$(tmux_test new-window -d -t "$session_id" -n later -P -F '#{window_id}')
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" auto-enable-window "$session_id" "$new_window"

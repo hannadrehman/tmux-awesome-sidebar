@@ -36,6 +36,8 @@ tas_list_content_panes() {
 tas_build_rows() {
   session=$1; tas_validate_id "$session" session || return 2
   tab=$(printf '\t')
+  key_sep=$(printf '\035')
+  seen_repositories=''
   tas_list_group_windows "$session" |
     while IFS='|' read -r wid index wname manual; do
       [ -n "$wid" ] || continue
@@ -53,6 +55,15 @@ EOF
 
       repo=$(git -C "$raw_wpath" rev-parse --show-toplevel 2>/dev/null || :)
       [ -n "$repo" ] || continue
+      common=$(git -C "$repo" rev-parse --git-common-dir 2>/dev/null || :)
+      [ -n "$common" ] || continue
+      case "$common" in /*) ;; *) common=$repo/$common ;; esac
+      common=$(CDPATH= cd -- "$common" 2>/dev/null && pwd -P || :)
+      [ -n "$common" ] || continue
+      case "$seen_repositories" in
+        *"$key_sep$common$key_sep"*) continue ;;
+      esac
+      seen_repositories=$seen_repositories$key_sep$common$key_sep
       git -C "$repo" worktree list --porcelain 2>/dev/null |
         awk '
           function emit() {
@@ -83,8 +94,21 @@ tas_tree_visible() {
 }
 
 tas_cursor_move() {
-  current=${1-}; direction=${2-}
-  awk -F '\t' -v id="$current" -v d="$direction" '{if($1!="sidebar")a[++n]=$2} END{p=1;for(i=1;i<=n;i++)if(a[i]==id)p=i;if(d=="down"&&p<n)p++;if(d=="up"&&p>1)p--;if(d=="end"||d=="G")p=n;if(d=="home"||d=="gg")p=1;if(n)print a[p]}'
+  current=${1-}; direction=${2-}; step=${3:-1}
+  awk -F '\t' -v id="$current" -v d="$direction" -v s="$step" '
+    {if($1!="sidebar")a[++n]=$2}
+    END {
+      p=1
+      for(i=1;i<=n;i++)if(a[i]==id)p=i
+      if(s<1)s=1
+      if(d=="down"&&p<n)p++
+      if(d=="up"&&p>1)p--
+      if(d=="page-down"){p+=s;if(p>n)p=n}
+      if(d=="page-up"){p-=s;if(p<1)p=1}
+      if(d=="end"||d=="G")p=n
+      if(d=="home"||d=="gg")p=1
+      if(n)print a[p]
+    }'
 }
 
 tas_parent_for_row() { awk -F '\t' -v id="$1" '$2==id{print $3;exit}'; }

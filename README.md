@@ -24,13 +24,15 @@ window receives its own absolute-left sidebar pane, so switching windows keeps
 the navigation visible without detached storage sessions or linked-window
 layouts. If a window's working directory belongs to a Git repository, the
 repository's `git worktree list` entries are rendered as children below that
-window. Pane children and search results are not included.
+repository's first window. The same worktree set is not repeated beneath other
+windows from that repository. Pane children and search results are not included.
 
 Focus the sidebar with your normal tmux pane-navigation binding or the mouse.
 It reads keys directly: `j/k` or the arrow keys move through the list, Enter
 switches to the selected window or opens the selected worktree in a new window,
 reusing its existing window when it is already open. `g/G` jump to the ends,
-and `q` or Escape returns to the content area. The `ascii` icon
+`Ctrl-u`/`Ctrl-d` move half a page, `Ctrl-b`/`Ctrl-f` move a full page, and `q`
+or Escape returns to the content area. The `ascii` icon
 mode is portable; `nerd` is an opt-in display choice. Run `scripts/doctor` to
 check dependencies, hooks, links, tags, bindings, prefix inheritance, and
 style interference.
