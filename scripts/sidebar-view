@@ -60,6 +60,16 @@ move_cursor() {
   last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
 }
 
+sync_cursor() {
+  next=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_cursor)
+  [ -n "$next" ] || return 0
+  printf '%s\n' "$rows" | awk -F '\t' -v id="$next" '$2==id{found=1}END{exit !found}' || return 0
+  previous=$cursor
+  cursor=$next
+  [ "$cursor" = "$previous" ] || printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query" "$previous"
+  last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
+}
+
 refresh_rows() {
   cursor=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_cursor)
   collapsed=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_collapsed)
@@ -77,9 +87,9 @@ activate_cursor() {
   kind=$(printf '%s\n' "$row" | awk -F '\t' '{print $1}')
   target=$(printf '%s\n' "$row" | awk -F '\t' '{print $2}')
   path=$(printf '%s\n' "$row" | awk -F '\t' '{print $7}')
-  hint=''
+  hint=$(printf '%s\n' "$row" | awk -F '\t' '{print $11}')
   if [ "$kind" = worktree ]; then
-    hint=$(printf '%s\n' "$rows" | awk -F '\t' -v p="$path" '$1=="worktree"&&$7==p&&$4~/ \*$/{print $3;exit}')
+    [ -n "$hint" ] || hint=$(printf '%s\n' "$rows" | awk -F '\t' -v p="$path" '$1=="worktree"&&$7==p&&$4~/ \*$/{print $3;exit}')
   fi
   "$ROOT/action" activate-row "$pane_id" "$kind" "$target" "$path" "$hint"
 }
@@ -102,6 +112,7 @@ while :; do
     byte=$(read_byte)
   fi
   case ${byte-} in
+    1)   sync_cursor ;;        # internal active-window sync
     106) move_cursor down ;;  # j
     107) move_cursor up ;;    # k
     103) move_cursor gg ;;    # g

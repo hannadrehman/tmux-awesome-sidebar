@@ -37,6 +37,9 @@ active=$(tmux_test list-windows -t "$session_id" -F "#{window_id}${tab}#{window_
 assert_eq "$second_window" "$active" "Enter selects the highlighted window"
 active_sidebar=$(tmux_test list-panes -t "$second_window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}${tab}#{pane_active}" | awk -F '\t' '$2=="sidebar"&&$3==1{print $1}')
 [ -n "$active_sidebar" ]
+tmux_test set-option -p -t "$active_sidebar" @awesome_sidebar_cursor "$first_window"
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" sync-active "$second_window"
+assert_eq "$second_window" "$(tmux_test show-option -p -qv -t "$active_sidebar" @awesome_sidebar_cursor)" "focused window is highlighted"
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '106) move_cursor down'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '10|13) activate_cursor'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" "trap 'exit 0' HUP INT TERM"

@@ -13,14 +13,13 @@ worktree_path=$TMUX_TMPDIR/'repo worktree'
 PATH=/opt/homebrew/bin:$PATH git -C "$gitroot" worktree add -q "$worktree_path" feature/tree
 
 start_tmux -c "$gitroot" sh
-tmux_test new-window -d -t test -n second -c "$gitroot"
+second_window=$(tmux_test new-window -d -t test -n second -c "$gitroot" -P -F '#{window_id}')
 tmux_test set-environment -g TMUX_PLUGIN_MANAGER_PATH "$PROJECT_ROOT"
 tmux_test source-file "$PROJECT_ROOT/tmux-awesome-sidebar.tmux"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" auto-enable
 
 session_id=$(tmux_test display-message -p -t test '#{session_id}')
 tab=$(printf '\t')
-second_window=$(tmux_test list-windows -t "$session_id" -F "#{window_id}${tab}#{window_name}" | awk -F '\t' '$2=="second"{print $1}')
 second_sidebar=$(tmux_test list-panes -t "$second_window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" | awk -F '\t' '$2=="sidebar"{print $1}')
 [ -n "$second_sidebar" ]
 

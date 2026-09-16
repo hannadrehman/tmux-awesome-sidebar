@@ -22,6 +22,8 @@ assert_file_not_contains "$PROJECT_ROOT/tmux-awesome-sidebar.tmux" 'bind-key'
 assert_file_not_contains "$PROJECT_ROOT/tmux-awesome-sidebar.tmux" '@awesome_sidebar_key'
 tmux_test show-hooks -g | assert_contains 'after-new-window'
 tmux_test show-hooks -g | assert_contains 'auto-enable-window'
+tmux_test show-hooks -g | assert_contains 'after-select-window'
+tmux_test show-hooks -g | assert_contains 'sync-active'
 [ -x "$PROJECT_ROOT/scripts/sidebar-view" ]
 assert_eq 0 "$(tmux_test list-sessions -F '#{session_name}' | awk '/^__awesome_sidebar_/{n++} END{print n+0}')" "no hidden storage sessions"
 assert_eq "session-${session_id#\$}" "$(tmux_test show-option -qv -t "$session_id" @awesome_sidebar_group)"

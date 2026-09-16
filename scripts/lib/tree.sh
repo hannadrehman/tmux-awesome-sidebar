@@ -7,8 +7,8 @@ fi
 tas_list_group_windows() {
   session=$1; tas_validate_id "$session" session || return 2
   tab=$(printf '\t')
-  tas_tmux list-windows -t "$session" -F "#{window_id}${tab}#{window_index}${tab}#{window_name}${tab}#{@awesome_sidebar_name}" |
-    awk -F '\t' 'BEGIN{OFS="|"}{for(i=1;i<=4;i++)gsub(/\|/,"",$i);print $1,$2,$3,$4}' |
+  tas_tmux list-windows -t "$session" -F "#{window_id}${tab}#{window_index}${tab}#{window_name}${tab}#{@awesome_sidebar_name}${tab}#{@awesome_sidebar_worktree_path}" |
+    awk -F '\t' 'BEGIN{OFS="|"}{for(i=1;i<=5;i++)gsub(/\|/,"",$i);print $1,$2,$3,$4,$5}' |
     sort -t '|' -k2,2n
 }
 
@@ -37,55 +37,105 @@ tas_build_rows() {
   session=$1; tas_validate_id "$session" session || return 2
   tab=$(printf '\t')
   key_sep=$(printf '\035')
-  seen_repositories=''
-  tas_list_group_windows "$session" |
-    while IFS='|' read -r wid index wname manual; do
-      [ -n "$wid" ] || continue
-      details=$(tas_window_content_details "$wid")
-      IFS='|' read -r wpath command dead <<EOF
+  window_records=$(tas_list_group_windows "$session")
+  enriched=''
+  visible_repositories=''
+  open_windows=''
+
+  while IFS='|' read -r wid index wname manual managed; do
+    [ -n "$wid" ] || continue
+    details=$(tas_window_content_details "$wid")
+    IFS='|' read -r raw_wpath command dead <<EOF
 $details
 EOF
-      name=$manual; [ -n "$name" ] || name=$wname
-      name=$(tas_sanitize_display "$name")
-      raw_wpath=$wpath
-      wpath=$(tas_sanitize_display "$raw_wpath")
-      command=$(tas_sanitize_display "$command")
-      [ "$dead" = 1 ] && status=dead || status=active
-      printf 'session\t%s\t\t%s\t\t\t%s\t%s\t%s\t\n' "$wid" "$name" "$wpath" "$command" "$status"
-
-      repo=$(git -C "$raw_wpath" rev-parse --show-toplevel 2>/dev/null || :)
-      [ -n "$repo" ] || continue
+    repo=$(git -C "$raw_wpath" rev-parse --show-toplevel 2>/dev/null || :)
+    common=''; folder=''; worktree=''
+    if [ -n "$repo" ]; then
+      repo=$(CDPATH= cd -- "$repo" 2>/dev/null && pwd -P || :)
+      # Older plugin versions recorded only the folder name when they opened a
+      # worktree. Treat those windows as managed so upgrades fold them into the
+      # existing child row instead of preserving a duplicate top-level row.
+      if [ -z "$managed" ] && [ "$manual" = "$(basename "$raw_wpath")" ]; then
+        managed=$repo
+      fi
       common=$(git -C "$repo" rev-parse --git-common-dir 2>/dev/null || :)
-      [ -n "$common" ] || continue
       case "$common" in /*) ;; *) common=$repo/$common ;; esac
       common=$(CDPATH= cd -- "$common" 2>/dev/null && pwd -P || :)
-      [ -n "$common" ] || continue
-      case "$seen_repositories" in
-        *"$key_sep$common$key_sep"*) continue ;;
+      if [ "$(basename "$common")" = .git ]; then
+        folder=$(basename "$(dirname "$common")")
+      else
+        folder=$(basename "$repo")
+      fi
+      worktree=$(git -C "$repo" symbolic-ref --quiet --short HEAD 2>/dev/null || basename "$repo")
+      worktree=$(printf '%s' "$worktree" | awk '{gsub(/[^[:alnum:]_.-]+/,"-");print}')
+      open_windows=$(printf '%s\n%s|%s' "$open_windows" "$repo" "$wid")
+      if [ -z "$managed" ]; then
+        visible_repositories=$visible_repositories$key_sep$common$key_sep
+      fi
+    fi
+    line=$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
+      "$wid" "$index" "$wname" "$manual" "$managed" "$raw_wpath" "$command" "$dead" "$repo" "$common" "$folder" "$worktree")
+    enriched=$(printf '%s\n%s' "$enriched" "$line")
+  done <<EOF
+$window_records
+EOF
+
+  seen_repositories=''
+  promoted_managed=''
+  while IFS='|' read -r wid index wname manual managed raw_wpath command dead repo common folder worktree; do
+    [ -n "$wid" ] || continue
+    hidden=0
+    if [ -n "$managed" ] && [ -n "$common" ]; then
+      case "$visible_repositories$promoted_managed" in
+        *"$key_sep$common$key_sep"*) hidden=1 ;;
+        *) promoted_managed=$promoted_managed$key_sep$common$key_sep ;;
       esac
-      seen_repositories=$seen_repositories$key_sep$common$key_sep
-      git -C "$repo" worktree list --porcelain 2>/dev/null |
-        awk '
-          function emit() {
-            if (path == "") return
-            if (branch == "") branch="(detached)"
-            print branch "\t" path
-            path=""; branch=""
-          }
-          /^worktree / { emit(); path=substr($0,10); next }
-          /^branch / { branch=substr($0,8); sub(/^refs\/heads\//,"",branch); next }
-          /^$/ { emit(); next }
-          END { emit() }
-        ' | while IFS="$tab" read -r branch wtpath; do
-          [ -n "$wtpath" ] || continue
-          branch=$(tas_sanitize_display "$branch")
-          wtpath=$(tas_sanitize_display "$wtpath")
-          label=$branch
-          [ "$wtpath" != "$repo" ] || label="$label *"
-          printf 'worktree\tworktree:%s:%s\t%s\t%s\t%s\t%s\t%s\t\tdormant\tworktree\n' \
-            "$wid" "$wtpath" "$wid" "$label" "$(basename "$repo")" "$branch" "$wtpath"
-        done
-    done
+    fi
+    [ "$hidden" -eq 0 ] || continue
+
+    name=$manual
+    if [ -z "$name" ]; then
+      if [ -n "$repo" ]; then name=$folder--$worktree
+      else name=$(basename "$raw_wpath")-$index
+      fi
+    fi
+    name=$(tas_sanitize_display "$name")
+    wpath=$(tas_sanitize_display "$raw_wpath")
+    command=$(tas_sanitize_display "$command")
+    [ "$dead" = 1 ] && status=dead || status=active
+    printf 'session\t%s\t\t%s\t\t\t%s\t%s\t%s\t\n' "$wid" "$name" "$wpath" "$command" "$status"
+
+    [ -n "$repo" ] && [ -n "$common" ] || continue
+    case "$seen_repositories" in
+      *"$key_sep$common$key_sep"*) continue ;;
+    esac
+    seen_repositories=$seen_repositories$key_sep$common$key_sep
+    git -C "$repo" worktree list --porcelain 2>/dev/null |
+      awk '
+        function emit() {
+          if (path == "") return
+          if (branch == "") branch="(detached)"
+          print branch "\t" path
+          path=""; branch=""
+        }
+        /^worktree / { emit(); path=substr($0,10); next }
+        /^branch / { branch=substr($0,8); sub(/^refs\/heads\//,"",branch); next }
+        /^$/ { emit(); next }
+        END { emit() }
+      ' | while IFS="$tab" read -r branch wtpath; do
+        [ -n "$wtpath" ] || continue
+        branch=$(tas_sanitize_display "$branch")
+        wtpath=$(tas_sanitize_display "$wtpath")
+        canonical=$(CDPATH= cd -- "$wtpath" 2>/dev/null && pwd -P || printf '%s' "$wtpath")
+        open_window=$(printf '%s' "$open_windows" | awk -F '|' -v p="$canonical" '$1==p{print $2;exit}')
+        label=$branch; child_status=dormant
+        if [ -n "$open_window" ]; then label="$label *"; child_status=active; fi
+        printf 'worktree\tworktree:%s\t%s\t%s\t%s\t%s\t%s\t\t%s\tworktree\t%s\n' \
+          "$wtpath" "$wid" "$label" "$folder" "$branch" "$wtpath" "$child_status" "$open_window"
+      done
+  done <<EOF
+$enriched
+EOF
 }
 
 tas_tree_visible() {

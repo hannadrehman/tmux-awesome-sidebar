@@ -70,6 +70,15 @@ enable_group() {
   tab=$(printf '\t')
   window_index=$(tas_tmux list-windows -t "$session" -F "#{window_id}${tab}#{window_index}" | awk -F '\t' -v w="$window" '$1==w{print $2;exit}')
   tas_tmux set-option -w -t "$window" @awesome_sidebar_host_index "$window_index" || return 1
+  content_path=$(tas_tmux display-message -p -t "$pane" '#{pane_current_path}')
+  smart_name=$(tas_smart_window_name "$content_path" "$window_index")
+  tas_tmux rename-window -t "$window" "$smart_name" || return 1
+  managed_path=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_worktree_path)
+  legacy_name=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_name)
+  if [ -z "$managed_path" ] && [ -n "$legacy_name" ] && [ "$legacy_name" = "$(basename "$content_path")" ]; then
+    managed_path=$(git -C "$content_path" rev-parse --show-toplevel 2>/dev/null || :)
+    [ -z "$managed_path" ] || tas_tmux set-option -w -t "$window" @awesome_sidebar_worktree_path "$managed_path" || return 1
+  fi
   sidebar=$(tas_tmux list-panes -t "$window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" |
     awk -F '\t' '$2=="sidebar"{print $1;exit}')
   saved_cursor=''
@@ -98,8 +107,16 @@ enable_group() {
   tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_group "$group" || return 1
   tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_host_session "$session" || return 1
   current_cursor=$(tas_tmux show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)
-  if ! tas_validate_id "$current_cursor" window 2>/dev/null || ! window_has_link "$session" "$current_cursor"; then
-    tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "$window" || return 1
+  managed_path=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_worktree_path)
+  if [ -n "$managed_path" ]; then
+    managed_path=$(CDPATH= cd -- "$managed_path" 2>/dev/null && pwd -P || printf '%s' "$managed_path")
+    tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "worktree:$managed_path" || return 1
+  else
+    case "$current_cursor" in
+      worktree:*) ;;
+      @*) window_has_link "$session" "$current_cursor" || tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "$window" || return 1 ;;
+      *) tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "$window" || return 1 ;;
+    esac
   fi
   tas_tmux respawn-pane -k -t "$sidebar" "$ROOT/sidebar-view" "$session" "$sidebar" "$width" "$icons" || return 1
   tas_signal_group "$group"
@@ -113,6 +130,24 @@ focus_sidebar() {
     awk -F '\t' '$2=="sidebar"{print $1;exit}')
   [ -n "$sidebar" ] || return 1
   tas_tmux select-pane -t "$sidebar"
+}
+
+sync_active_window() {
+  window=$1
+  tas_validate_id "$window" window || return 2
+  tab=$(printf '\t')
+  sidebar=$(tas_tmux list-panes -t "$window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" 2>/dev/null |
+    awk -F '\t' '$2=="sidebar"{print $1;exit}')
+  [ -n "$sidebar" ] || return 0
+  managed_path=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_worktree_path)
+  if [ -n "$managed_path" ]; then
+    managed_path=$(CDPATH= cd -- "$managed_path" 2>/dev/null && pwd -P || printf '%s' "$managed_path")
+    row_id=worktree:$managed_path
+  else
+    row_id=$window
+  fi
+  tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "$row_id" || return 1
+  tas_tmux send-keys -t "$sidebar" C-a
 }
 
 select_existing_window() {
@@ -136,9 +171,12 @@ session_new() {
   tas_validate_id "$session" session || return 1
   [ -d "$path" ] || return 1
   win=$(tas_tmux new-window -d -t "$session" -n "$name" -c "$path" -P -F '#{window_id}') || return 1
+  window_index=$(tas_tmux display-message -p -t "$win" '#{window_index}')
+  smart_name=$(tas_smart_window_name "$path" "$window_index")
+  tas_tmux rename-window -t "$win" "$smart_name" || return 1
   tas_tmux set-option -w -t "$win" @awesome_sidebar_group "$group" || return 1
   tas_tmux set-option -w -t "$win" @awesome_sidebar_kind content || return 1
-  tas_tmux set-option -w -t "$win" @awesome_sidebar_name "$name" || return 1
+  tas_tmux set-option -w -t "$win" @awesome_sidebar_name "$smart_name" || return 1
   tas_tmux set-option -w -t "$win" @awesome_sidebar_worktree_path "$path" || return 1
   tas_signal_group "$group"
   printf '%s\n' "$win"
@@ -423,6 +461,7 @@ case $action in
     fi
     ;;
   refresh-from-hook) group=$(tas_tmux display-message -p '#{@awesome_sidebar_group}'); [ -n "$group" ] && tas_signal_group "$group" || :;;
+  sync-active) [ "$#" -eq 2 ] || usage; sync_active_window "$2";;
   activate-row) [ "$#" -ge 5 ] && [ "$#" -le 6 ] || usage; activate_row "$2" "$3" "$4" "$5" "${6-}";;
   navigate) [ "$#" -eq 3 ] || usage; navigate_action "$2" "$3";;
   rename) [ "$#" -eq 3 ] || usage; tas_validate_id "$2" pane || exit 2; tas_set_manual_name "$2" "$3";;
