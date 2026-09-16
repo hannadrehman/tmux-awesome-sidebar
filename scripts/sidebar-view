@@ -1,15 +1,66 @@
 #!/bin/sh
 set -eu
+
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 PROJECT_ROOT=$(CDPATH= cd -- "$ROOT/.." && pwd -P); export PROJECT_ROOT
 . "$ROOT/lib/common.sh"
 . "$ROOT/lib/tree.sh"
-group=${1-}; pane_id=${2-}; width=$(tas_clamp_width "${3:-28}"); icons=${4:-ascii}
-[ -n "$group" ] || { echo Sessions; exit 0; }
+
+session=${1-}
+pane_id=${2-}
+width=$(tas_clamp_width "${3:-28}")
+icons=${4:-ascii}
+tas_validate_id "$session" session || { echo Windows; exit 0; }
+
+old_stty=$(stty -g 2>/dev/null || :)
+restore_terminal() {
+  [ -z "$old_stty" ] || stty "$old_stty" 2>/dev/null || :
+}
+trap 'restore_terminal' EXIT HUP INT TERM
+stty -echo -icanon min 0 time 2 2>/dev/null || :
+
+read_byte() {
+  LC_ALL=C dd bs=1 count=1 2>/dev/null | od -An -tu1 | awk '{print $1}'
+}
+
+leave_sidebar() {
+  window=$(tas_tmux display-message -p -t "$pane_id" '#{window_id}')
+  target=$(tas_tmux list-panes -t "$window" -F '#{pane_id} #{@awesome_sidebar_kind}' |
+    awk '$2!="sidebar"{print $1;exit}')
+  [ -z "$target" ] || tas_tmux select-pane -t "$target"
+}
+
+last=''
 while :; do
   cursor=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_cursor)
   collapsed=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_collapsed)
-  query=$(tas_tmux show-option -t "$pane_id" -qv @awesome_sidebar_query)
-  tas_build_rows "$group" | tas_tree_visible "$collapsed" | tas_render "$width" "$icons" "$cursor" "$query"
-  tas_tmux wait-for "awesome-sidebar-refresh-${pane_id#%}" || exit 0
+  query=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_query)
+  rows=$(tas_build_rows "$session" | tas_tree_visible "$collapsed")
+  snapshot=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
+  if [ "$snapshot" != "$last" ]; then
+    printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query"
+    last=$snapshot
+  fi
+
+  byte=$(read_byte)
+  case ${byte-} in
+    106) "$ROOT/action" navigate "$pane_id" down ;;  # j
+    107) "$ROOT/action" navigate "$pane_id" up ;;    # k
+    103) "$ROOT/action" navigate "$pane_id" gg ;;     # g
+    71)  "$ROOT/action" navigate "$pane_id" G ;;      # G
+    10|13) "$ROOT/action" navigate "$pane_id" enter ;; # Enter
+    113) leave_sidebar ;;                                # q
+    27)
+      second=$(read_byte)
+      if [ "${second-}" = 91 ]; then
+        third=$(read_byte)
+        case ${third-} in
+          65) "$ROOT/action" navigate "$pane_id" up ;;
+          66) "$ROOT/action" navigate "$pane_id" down ;;
+        esac
+      else
+        leave_sidebar
+      fi
+      ;;
+  esac
 done

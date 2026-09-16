@@ -5,17 +5,17 @@ if ! command -v tas_tmux >/dev/null 2>&1; then
 fi
 
 tas_list_group_windows() {
-  group=$1; tas_validate_text "$group" || return 2
-  tas_tmux list-windows -a -F '#{window_id}	#{session_id}	#{@awesome_sidebar_group}	#{@awesome_sidebar_kind}	#{@awesome_sidebar_order}	#{window_name}	#{pane_current_path}' |
-    awk -F '\t' -v g="$group" '$3==g && !seen[$1]++ {print}' | sort -t "$(printf '\t')" -k5,5n -k1,1n
+  session=$1; tas_validate_id "$session" session || return 2
+  tas_tmux list-windows -t "$session" -F '#{window_id}	#{session_id}	#{@awesome_sidebar_group}	#{@awesome_sidebar_kind}	#{window_index}	#{window_name}	#{pane_current_path}' |
+    sort -t "$(printf '\t')" -k5,5n
 }
 tas_list_content_panes() {
   tas_validate_id "$1" window || return 2
   tas_tmux list-panes -t "$1" -F '#{pane_id}	#{@awesome_sidebar_kind}	#{pane_index}' | awk -F '\t' '$2!="sidebar"{print $1}'
 }
 tas_build_rows() {
-  group=$1; tas_validate_text "$group" || return 2; tab=$(printf '\t')
-  tas_list_group_windows "$group" | while IFS="$tab" read -r wid sid wgroup kind order wname wpath; do
+  session=$1; tas_validate_id "$session" session || return 2; tab=$(printf '\t')
+  tas_list_group_windows "$session" | while IFS="$tab" read -r wid sid wgroup kind order wname wpath; do
     [ -n "$wid" ] || continue
     name=$(tas_tmux display-message -p -t "$wid" '#{@awesome_sidebar_name}')
     [ -n "$name" ] || name=$wname
@@ -26,14 +26,7 @@ tas_build_rows() {
     dead=$(tas_tmux display-message -p -t "$wid" '#{pane_dead}')
     tas_validate_text "$name" && tas_validate_text "$repo" && tas_validate_text "$branch" && tas_validate_text "$path" || continue
     printf 'session\t%s\t\t%s\t%s\t%s\t%s\t%s\t%s\t\n' "$wid" "$name" "$repo" "$branch" "$path" "$cmd" "$( [ "$dead" = 1 ] && echo dead || echo active )"
-    tas_tmux list-panes -t "$wid" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}${tab}#{pane_title}${tab}#{pane_current_path}${tab}#{pane_current_command}${tab}#{pane_dead}${tab}#{pane_index}" |
-      awk -F '\t' -v w="$wid" -v n="$name" -v r="$repo" -v b="$branch" '$2!="sidebar"{printf "pane\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n",$1,w,n,r,b,$4,$5,($6==1?"dead":"active"),""}'
   done
-  roots=$(tas_tmux show-option -gqv @awesome_sidebar_worktree_roots)
-  [ -n "$roots" ] || return 0
-  plugin_root=${PROJECT_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)}
-  [ -x "$plugin_root/scripts/discover-worktrees" ] || return 0
-  "$plugin_root/scripts/discover-worktrees" --discover "$roots" | awk -F '\t' '{printf "worktree\tworktree:%s\t\t%s\t%s\t%s\t%s\t%s\t dormant\tworktree\n",$4,$2,$2,$3,$4,$4}'
 }
 tas_tree_visible() {
   collapsed=${1-}; awk -F '\t' -v c=",$collapsed," '$1=="session"{show=(index(c,","$2",")==0);print;next}show&&$1!="sidebar"{print}'
