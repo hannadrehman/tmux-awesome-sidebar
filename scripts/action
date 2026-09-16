@@ -151,10 +151,13 @@ EOF
   if [ -n "$active_path" ]; then
     active_path=$(CDPATH= cd -- "$active_path" 2>/dev/null && pwd -P || printf '%s' "$active_path")
     row_id=worktree:$active_path
+    active_label=$(tas_sidebar_project_label "$active_path" || :)
   else
     row_id=$window
+    active_label=''
   fi
   tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "$row_id" || return 1
+  tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_active_label "$active_label" || return 1
   tas_tmux send-keys -t "$sidebar" C-a
 }
 
@@ -162,10 +165,10 @@ select_existing_window() {
   window=$1
   tas_validate_id "$window" window || return 2
   tab=$(printf '\t')
-  sidebar=$(tas_tmux list-panes -t "$window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" 2>/dev/null |
-    awk -F '\t' '$2=="sidebar"{print $1;exit}')
-  [ -n "$sidebar" ] || return 1
-  tas_tmux select-window -t "$window" \; select-pane -t "$sidebar"
+  target=$(tas_tmux list-panes -t "$window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" 2>/dev/null |
+    awk -F '\t' '$2!="sidebar"{print $1;exit}')
+  [ -n "$target" ] || return 1
+  tas_tmux select-window -t "$window" \; select-pane -t "$target"
 }
 
 session_new() {
@@ -248,7 +251,9 @@ session_select() {
     sidebar=$(tas_tmux list-panes -t "$win" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" |
       awk -F '\t' '$2=="sidebar"{print $1;exit}')
   fi
-  [ -z "$sidebar" ] || tas_tmux select-pane -t "$sidebar"
+  content=$(tas_tmux list-panes -t "$win" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" |
+    awk -F '\t' '$2!="sidebar"{print $1;exit}')
+  [ -z "$content" ] || tas_tmux select-pane -t "$content"
 }
 
 disable_group() {

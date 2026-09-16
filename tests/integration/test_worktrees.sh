@@ -45,13 +45,17 @@ assert_eq 2 "$(tmux_test list-windows -t "$session_id" -F '#{window_id}' | wc -l
 opened_window=$(tmux_test list-windows -t "$session_id" -F '#{window_id}' | awk -v root="$window_id" '$0!=root{print;exit}')
 assert_eq 'repo--feature-sidebar' "$(tmux_test display-message -p -t "$opened_window" '#{window_name}')" "linked worktree window name"
 opened_sidebar=$(tmux_test list-panes -t "$opened_window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" | awk -F '\t' '$2=="sidebar"{print $1;exit}')
+opened_content=$(tmux_test list-panes -t "$opened_window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}${tab}#{pane_active}${tab}#{pane_current_path}" | awk -F '\t' '$2!="sidebar"&&$3==1{print $1"\t"$4;exit}')
+[ -n "$opened_content" ]
 canonical_spaced=$(CDPATH= cd -- "$spaced" && pwd -P)
+assert_eq "$canonical_spaced" "$(printf '%s\n' "$opened_content" | awk -F '\t' '{print $2}')" "new tab enters the selected worktree"
 assert_eq "worktree:$canonical_spaced" "$(tmux_test show-option -p -qv -t "$opened_sidebar" @awesome_sidebar_cursor)" "opened worktree stays selected in place"
 
 # The real tmux window is folded into the existing worktree child instead of
 # appearing as a second top-level sidebar row.
 tree_rows=$(env PROJECT_ROOT="$PROJECT_ROOT" TMUX_SOCKET="$TEST_SOCKET" sh -c '. "$1/scripts/lib/common.sh"; . "$1/scripts/lib/tree.sh"; tas_build_rows "$2"' sh "$PROJECT_ROOT" "$session_id")
 assert_eq 1 "$(printf '%s\n' "$tree_rows" | awk -F '\t' '$1=="session"{n++}END{print n+0}')" "opened worktree is not duplicated at the top level"
+assert_eq 'repo(master)' "$(printf '%s\n' "$tree_rows" | awk -F '\t' '$1=="session"{print $4;exit}')" "folder row includes its branch"
 assert_eq "$opened_window" "$(printf '%s\n' "$tree_rows" | awk -F '\t' -v p="$canonical_spaced" '$1=="worktree"&&$7==p{print $11;exit}')" "worktree child targets its open window"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" activate-row "$sidebar" worktree existing "$spaced"
 assert_eq 2 "$(tmux_test list-windows -t "$session_id" -F '#{window_id}' | wc -l | awk '{print $1}')" "open worktree is reused"

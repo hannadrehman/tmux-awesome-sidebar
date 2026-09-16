@@ -67,7 +67,7 @@ EOF
         folder=$(basename "$repo")
       fi
       worktree=$(git -C "$repo" symbolic-ref --quiet --short HEAD 2>/dev/null || basename "$repo")
-      worktree=$(printf '%s' "$worktree" | awk '{gsub(/[^[:alnum:]_.-]+/,"-");print}')
+      worktree=$(tas_sanitize_display "$worktree" | awk '{gsub(/\|/,"");print}')
       open_windows=$(printf '%s\n%s|%s' "$open_windows" "$repo" "$wid")
       if [ -z "$managed" ]; then
         visible_repositories=$visible_repositories$key_sep$common$key_sep
@@ -93,11 +93,8 @@ EOF
     fi
     [ "$hidden" -eq 0 ] || continue
 
-    name=$manual
-    if [ -z "$name" ]; then
-      if [ -n "$repo" ]; then name=$folder--$worktree
-      else name=$(basename "$raw_wpath")-$index
-      fi
+    if [ -n "$repo" ]; then name=$folder'('$worktree')'
+    else name=$manual; [ -n "$name" ] || name=$(basename "$raw_wpath")-$index
     fi
     name=$(tas_sanitize_display "$name")
     wpath=$(tas_sanitize_display "$raw_wpath")

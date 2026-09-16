@@ -64,9 +64,22 @@ sync_cursor() {
   next=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_cursor)
   [ -n "$next" ] || return 0
   printf '%s\n' "$rows" | awk -F '\t' -v id="$next" '$2==id{found=1}END{exit !found}' || return 0
+  label_changed=0
+  active_label=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_active_label)
+  if [ -n "$active_label" ]; then
+    parent=$(printf '%s\n' "$rows" | awk -F '\t' -v id="$next" '$2==id{print $3;exit}')
+    if [ -n "$parent" ]; then
+      updated=$(printf '%s\n' "$rows" | awk -F '\t' -v OFS='\t' -v id="$parent" -v label="$active_label" '$2==id{$4=label}{print}')
+      if [ "$updated" != "$rows" ]; then rows=$updated; label_changed=1; fi
+    fi
+  fi
   previous=$cursor
   cursor=$next
-  [ "$cursor" = "$previous" ] || printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query" "$previous"
+  if [ "$label_changed" -eq 1 ]; then
+    printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query"
+  elif [ "$cursor" != "$previous" ]; then
+    printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query" "$previous"
+  fi
   last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
 }
 

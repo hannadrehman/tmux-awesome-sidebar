@@ -28,7 +28,8 @@ repository's first window. The same worktree set is not repeated beneath other
 windows from that repository. Pane children and search results are not included.
 Git-backed windows are named `folder--worktree-name`; other windows use
 `folder-index`. Opening a worktree keeps it on its existing child row and marks
-that row active instead of adding a duplicate top-level sidebar entry.
+that row active instead of adding a duplicate top-level sidebar entry. Sidebar
+project rows show the active branch as `folder(branch)`.
 
 Focus the sidebar with your normal tmux pane-navigation binding or the mouse.
 It reads keys directly: `j/k` or the arrow keys move through the list, Enter

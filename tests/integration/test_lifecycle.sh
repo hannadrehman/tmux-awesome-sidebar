@@ -35,8 +35,10 @@ tmux_test set-option -p -t "$first_sidebar" @awesome_sidebar_cursor "$second_win
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" navigate "$first_sidebar" enter
 active=$(tmux_test list-windows -t "$session_id" -F "#{window_id}${tab}#{window_active}" | awk -F '\t' '$2==1{print $1}')
 assert_eq "$second_window" "$active" "Enter selects the highlighted window"
-active_sidebar=$(tmux_test list-panes -t "$second_window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}${tab}#{pane_active}" | awk -F '\t' '$2=="sidebar"&&$3==1{print $1}')
+active_sidebar=$(tmux_test list-panes -t "$second_window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" | awk -F '\t' '$2=="sidebar"{print $1;exit}')
 [ -n "$active_sidebar" ]
+active_content=$(tmux_test list-panes -t "$second_window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}${tab}#{pane_active}" | awk -F '\t' '$2!="sidebar"&&$3==1{print $1;exit}')
+[ -n "$active_content" ]
 tmux_test set-option -p -t "$active_sidebar" @awesome_sidebar_cursor "$first_window"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" sync-active "$second_window"
 content_path=$(tmux_test list-panes -t "$second_window" -F '#{@awesome_sidebar_kind}|#{pane_current_path}' | awk -F '|' '$1!="sidebar"{print $2;exit}')

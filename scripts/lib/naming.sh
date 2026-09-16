@@ -26,3 +26,16 @@ tas_smart_window_name() {
   [ -n "$folder" ] || folder=window
   printf '%s-%s\n' "$folder" "$index"
 }
+
+tas_sidebar_project_label() {
+  path=$1
+  repo=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null || :)
+  [ -n "$repo" ] || return 1
+  common=$(git -C "$repo" rev-parse --git-common-dir 2>/dev/null || :)
+  case "$common" in /*) ;; *) common=$repo/$common ;; esac
+  common=$(CDPATH= cd -- "$common" 2>/dev/null && pwd -P || :)
+  if [ "$(basename "$common")" = .git ]; then folder=$(basename "$(dirname "$common")"); else folder=$(basename "$repo"); fi
+  branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD 2>/dev/null || basename "$repo")
+  folder=$(tas_sanitize_display "$folder"); branch=$(tas_sanitize_display "$branch")
+  printf '%s(%s)\n' "$folder" "$branch"
+}
