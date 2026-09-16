@@ -39,7 +39,10 @@ active_sidebar=$(tmux_test list-panes -t "$second_window" -F "#{pane_id}${tab}#{
 [ -n "$active_sidebar" ]
 tmux_test set-option -p -t "$active_sidebar" @awesome_sidebar_cursor "$first_window"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" sync-active "$second_window"
-assert_eq "$second_window" "$(tmux_test show-option -p -qv -t "$active_sidebar" @awesome_sidebar_cursor)" "focused window is highlighted"
+content_path=$(tmux_test list-panes -t "$second_window" -F '#{@awesome_sidebar_kind}|#{pane_current_path}' | awk -F '|' '$1!="sidebar"{print $2;exit}')
+worktree_path=$(git -C "$content_path" rev-parse --show-toplevel 2>/dev/null || :)
+if [ -n "$worktree_path" ]; then expected_cursor=worktree:$(CDPATH= cd -- "$worktree_path" && pwd -P); else expected_cursor=$second_window; fi
+assert_eq "$expected_cursor" "$(tmux_test show-option -p -qv -t "$active_sidebar" @awesome_sidebar_cursor)" "focused tab row is highlighted"
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '106) move_cursor down'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '10|13) activate_cursor'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" "trap 'exit 0' HUP INT TERM"

@@ -21,5 +21,8 @@ sidebar=$(tmux_test list-panes -t "$window_id" -F "#{pane_id}${tab}#{@awesome_si
   awk -F '\t' '$2=="sidebar"{print $1;exit}')
 [ -n "$sidebar" ]
 assert_eq 0 "$(tmux_test display-message -p -t "$sidebar" '#{pane_left}')" "legacy sidebar migrates left"
-assert_eq "$window_id" "$(tmux_test show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)" "invalid legacy cursor resets to current window"
+content_path=$(tmux_test display-message -p -t "$content_pane" '#{pane_current_path}')
+worktree_path=$(git -C "$content_path" rev-parse --show-toplevel 2>/dev/null || :)
+if [ -n "$worktree_path" ]; then expected_cursor=worktree:$(CDPATH= cd -- "$worktree_path" && pwd -P); else expected_cursor=$window_id; fi
+assert_eq "$expected_cursor" "$(tmux_test show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)" "invalid legacy cursor resets to active tab row"
 assert_eq 1 "$(tmux_test display-message -p -t "$sidebar" '#{pane_active}')" "migrated sidebar is focused"

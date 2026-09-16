@@ -107,10 +107,11 @@ enable_group() {
   tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_group "$group" || return 1
   tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_host_session "$session" || return 1
   current_cursor=$(tas_tmux show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)
-  managed_path=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_worktree_path)
-  if [ -n "$managed_path" ]; then
-    managed_path=$(CDPATH= cd -- "$managed_path" 2>/dev/null && pwd -P || printf '%s' "$managed_path")
-    tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "worktree:$managed_path" || return 1
+  cursor_path=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_worktree_path)
+  [ -n "$cursor_path" ] || cursor_path=$(git -C "$content_path" rev-parse --show-toplevel 2>/dev/null || :)
+  if [ -n "$cursor_path" ]; then
+    cursor_path=$(CDPATH= cd -- "$cursor_path" 2>/dev/null && pwd -P || printf '%s' "$cursor_path")
+    tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "worktree:$cursor_path" || return 1
   else
     case "$current_cursor" in
       worktree:*) ;;
@@ -139,10 +140,17 @@ sync_active_window() {
   sidebar=$(tas_tmux list-panes -t "$window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" 2>/dev/null |
     awk -F '\t' '$2=="sidebar"{print $1;exit}')
   [ -n "$sidebar" ] || return 0
-  managed_path=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_worktree_path)
-  if [ -n "$managed_path" ]; then
-    managed_path=$(CDPATH= cd -- "$managed_path" 2>/dev/null && pwd -P || printf '%s' "$managed_path")
-    row_id=worktree:$managed_path
+  active_path=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_worktree_path)
+  if [ -z "$active_path" ]; then
+    details=$(tas_window_content_details "$window")
+    IFS='|' read -r content_path command dead <<EOF
+$details
+EOF
+    active_path=$(git -C "$content_path" rev-parse --show-toplevel 2>/dev/null || :)
+  fi
+  if [ -n "$active_path" ]; then
+    active_path=$(CDPATH= cd -- "$active_path" 2>/dev/null && pwd -P || printf '%s' "$active_path")
+    row_id=worktree:$active_path
   else
     row_id=$window
   fi

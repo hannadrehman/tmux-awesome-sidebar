@@ -30,6 +30,8 @@ assert_eq 'repo--master' "$(tmux_test display-message -p -t "$window_id" '#{wind
 tab=$(printf '\t')
 sidebar=$(tmux_test list-panes -t "$window_id" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}" | awk -F '\t' '$2=="sidebar"{print $1;exit}')
 [ -n "$sidebar" ]
+canonical_root=$(CDPATH= cd -- "$gitroot" && pwd -P)
+assert_eq "worktree:$canonical_root" "$(tmux_test show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)" "root worktree is the selected tab row"
 
 # Reuse an existing window when its content pane already belongs to the
 # selected worktree.
