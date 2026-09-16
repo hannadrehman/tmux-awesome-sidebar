@@ -20,6 +20,11 @@ assert_eq "$window_id" "$(tmux_test show-option -p -qv -t "$sidebar" @awesome_si
 tmux_test select-pane -t "$pane_id"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" focus "$window_id"
 assert_eq "$sidebar" "$(tmux_test display-message -p '#{pane_id}')" "focus action selects the persistent sidebar"
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" navigate "$sidebar" down
+down_cursor=$(tmux_test show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)
+[ "$down_cursor" != "$window_id" ]
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" navigate "$sidebar" up
+assert_eq "$window_id" "$(tmux_test show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)" "j/k navigate while sidebar is focused"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$window_id" "$sidebar"
 assert_eq 2 "$(tmux_test list-panes -t "$window_id" | wc -l | awk '{print $1}')"
 new_host_window=$(tmux_test new-window -d -t "$session_id" -P -F '#{window_id}')

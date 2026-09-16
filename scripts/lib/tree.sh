@@ -7,7 +7,7 @@ fi
 tas_list_group_windows() {
   group=$1; tas_validate_text "$group" || return 2
   tas_tmux list-windows -a -F '#{window_id}	#{session_id}	#{@awesome_sidebar_group}	#{@awesome_sidebar_kind}	#{@awesome_sidebar_order}	#{window_name}	#{pane_current_path}' |
-    awk -F '\t' -v g="$group" '$3==g && $4!="sidebar" && !seen[$1]++ {print}' | sort -t "$(printf '\t')" -k5,5n -k1,1n
+    awk -F '\t' -v g="$group" '$3==g && !seen[$1]++ {print}' | sort -t "$(printf '\t')" -k5,5n -k1,1n
 }
 tas_list_content_panes() {
   tas_validate_id "$1" window || return 2

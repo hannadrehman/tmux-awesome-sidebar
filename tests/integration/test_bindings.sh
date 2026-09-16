@@ -28,7 +28,7 @@ tmux_test list-keys -T awesome-sidebar Down | assert_contains 'down'
 tmux_test list-keys -T awesome-sidebar | assert_contains 'command-prompt'
 tmux_test show-hooks -g | assert_contains 'after-new-window'
 tmux_test show-hooks -g | assert_contains 'auto-enable-window'
-assert_failure "$PROJECT_ROOT/scripts/action" focus '@999999'
+assert_failure "$PROJECT_ROOT/scripts/action" focus '@999999' 2>/dev/null
 assert_file_contains "$PROJECT_ROOT/README.md" "set -g @plugin 'hannadrehman/tmux-awesome-sidebar'"
 assert_file_contains "$PROJECT_ROOT/README.md" '@awesome_sidebar_worktree_roots'
 assert_file_contains "$PROJECT_ROOT/README.md" '@awesome_sidebar_width'
@@ -36,9 +36,10 @@ assert_file_contains "$PROJECT_ROOT/README.md" '@awesome_sidebar_icons'
 assert_file_contains "$PROJECT_ROOT/README.md" '@awesome_sidebar_key'
 assert_file_not_contains "$PROJECT_ROOT/README.md" 'set -g prefix C-a'
 assert_file_not_contains "$PROJECT_ROOT/README.md" '@dracula'
-session_id=$(tmux_test display-message -p '#{session_id}')
-window_id=$(tmux_test display-message -p '#{window_id}')
-pane_id=$(tmux_test display-message -p '#{pane_id}')
+session_id=$(tmux_test display-message -p -t test '#{session_id}')
+window_id=$(tmux_test display-message -p -t test: '#{window_id}')
+pane_id=$(tmux_test list-panes -t "$window_id" -F '#{pane_id} #{@awesome_sidebar_kind}' |
+  awk '$2!="sidebar"{print $1;exit}')
 mkdir -p "$TMUX_TMPDIR/caller"
 (cd "$TMUX_TMPDIR/caller" && TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$window_id" "$pane_id")
 tmux_test set-option -g @awesome_sidebar_key X
