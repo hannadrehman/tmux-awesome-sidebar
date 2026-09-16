@@ -2,8 +2,18 @@
 set -eu
 . "$(dirname -- "$0")/../testlib.sh"
 
-start_tmux sh
-tmux_test new-window -d -t test -n second
+gitroot=$TMUX_TMPDIR/repo
+mkdir -p "$gitroot"
+PATH=/opt/homebrew/bin:$PATH git -C "$gitroot" init -q
+PATH=/opt/homebrew/bin:$PATH git -C "$gitroot" config user.email test@example.invalid
+PATH=/opt/homebrew/bin:$PATH git -C "$gitroot" config user.name test
+PATH=/opt/homebrew/bin:$PATH git -C "$gitroot" commit --allow-empty -qm initial
+PATH=/opt/homebrew/bin:$PATH git -C "$gitroot" branch feature/tree
+worktree_path=$TMUX_TMPDIR/'repo worktree'
+PATH=/opt/homebrew/bin:$PATH git -C "$gitroot" worktree add -q "$worktree_path" feature/tree
+
+start_tmux -c "$gitroot" sh
+tmux_test new-window -d -t test -n second -c "$gitroot"
 tmux_test set-environment -g TMUX_PLUGIN_MANAGER_PATH "$PROJECT_ROOT"
 tmux_test source-file "$PROJECT_ROOT/tmux-awesome-sidebar.tmux"
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" auto-enable
@@ -21,9 +31,15 @@ TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" auto-enable-window "$ses
 assert_eq 1 "$(tmux_test list-panes -t "$second_window" -F '#{@awesome_sidebar_kind}' | awk '$0=="sidebar"{n++} END{print n+0}')" "one sidebar per window"
 assert_eq 0 "$(tmux_test display-message -p -t "$second_sidebar" '#{pane_left}')" "sidebar remains leftmost"
 
-# The sidebar model contains exactly one row per native tmux window and no
-# pane, worktree, or other child rows.
+# Discovery uses a content pane's path even while the sidebar is focused.
+tmux_test select-pane -t "$second_sidebar"
+
+# Every native window is a top-level row. Each one renders the repository's
+# worktrees directly beneath it and no pane rows are present.
 rows=$(env PROJECT_ROOT="$PROJECT_ROOT" TMUX_SOCKET="$TEST_SOCKET" sh -c '. "$1/scripts/lib/common.sh"; . "$1/scripts/lib/tree.sh"; tas_build_rows "$2"' sh "$PROJECT_ROOT" "$session_id")
 expected=$(tmux_test list-windows -t "$session_id" | wc -l | awk '{print $1}')
 assert_eq "$expected" "$(printf '%s\n' "$rows" | awk -F '\t' '$1=="session"{n++} END{print n+0}')" "one row per tmux window"
-assert_eq 0 "$(printf '%s\n' "$rows" | awk -F '\t' '$1!="session"{n++} END{print n+0}')" "no child row types"
+assert_eq 0 "$(printf '%s\n' "$rows" | awk -F '\t' '$1=="pane"{n++} END{print n+0}')" "no pane rows"
+assert_eq "$((expected * 2))" "$(printf '%s\n' "$rows" | awk -F '\t' '$1=="worktree"{n++} END{print n+0}')" "worktrees nested under every window"
+printf '%s\n' "$rows" | awk -F '\t' '$1=="worktree" && $3==""{exit 1}'
+printf '%s\n' "$rows" | awk -F '\t' -v w="$second_window" '$1=="session"{parent=$2;next}$1=="worktree"&&parent==w&&$3!=w{exit 1}'

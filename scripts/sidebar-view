@@ -17,7 +17,7 @@ restore_terminal() {
   [ -z "$old_stty" ] || stty "$old_stty" 2>/dev/null || :
 }
 trap 'restore_terminal' EXIT HUP INT TERM
-stty -echo -icanon min 0 time 1 2>/dev/null || :
+stty -echo -icanon min 1 time 0 2>/dev/null || :
 
 read_byte() {
   LC_ALL=C dd bs=1 count=1 2>/dev/null | od -An -tu1 | awk '{print $1}'
@@ -39,12 +39,16 @@ move_cursor() {
   last=''
 }
 
-last=''
-while :; do
+refresh_rows() {
   cursor=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_cursor)
   collapsed=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_collapsed)
   query=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_query)
   rows=$(tas_build_rows "$session" | tas_tree_visible "$collapsed")
+}
+
+last=''
+refresh_rows
+while :; do
   snapshot=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
   if [ "$snapshot" != "$last" ]; then
     printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query"
@@ -58,8 +62,10 @@ while :; do
     103) move_cursor gg ;;    # g
     71)  move_cursor G ;;     # G
     10|13) "$ROOT/action" navigate "$pane_id" enter ;; # Enter
+    12) refresh_rows; last='' ;;                        # internal refresh
     113) leave_sidebar ;;                                # q
     27)
+      stty min 0 time 1 2>/dev/null || :
       second=$(read_byte)
       if [ "${second-}" = 91 ]; then
         third=$(read_byte)
@@ -70,6 +76,7 @@ while :; do
       else
         leave_sidebar
       fi
+      stty min 1 time 0 2>/dev/null || :
       ;;
   esac
 done

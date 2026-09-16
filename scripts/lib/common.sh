@@ -28,7 +28,10 @@ tas_with_group_lock() {
   tas_tmux wait-for -U "$lock" >/dev/null 2>&1 || :
   return "$result"
 }
-tas_signal_sidebar() { id=${1-}; tas_validate_id "$id" pane || return 2; tas_tmux wait-for -S "awesome-sidebar-refresh-${id#%}"; }
+tas_signal_sidebar() {
+  id=${1-}; tas_validate_id "$id" pane || return 2
+  tas_tmux send-keys -t "$id" C-l
+}
 tas_signal_group() {
   group=${1-}; tas_validate_text "$group" && [ -n "$group" ] || return 2
   tab=$(printf '\t')
