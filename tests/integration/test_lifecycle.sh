@@ -37,7 +37,7 @@ active=$(tmux_test list-windows -t "$session_id" -F "#{window_id}${tab}#{window_
 assert_eq "$second_window" "$active" "Enter selects the highlighted window"
 active_sidebar=$(tmux_test list-panes -t "$second_window" -F "#{pane_id}${tab}#{@awesome_sidebar_kind}${tab}#{pane_active}" | awk -F '\t' '$2=="sidebar"&&$3==1{print $1}')
 [ -n "$active_sidebar" ]
-assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '106) "$ROOT/action" navigate "$pane_id" down'
+assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '106) move_cursor down'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '10|13) "$ROOT/action" navigate "$pane_id" enter'
 
 new_window=$(tmux_test new-window -d -t "$session_id" -n later -P -F '#{window_id}')

@@ -17,7 +17,7 @@ restore_terminal() {
   [ -z "$old_stty" ] || stty "$old_stty" 2>/dev/null || :
 }
 trap 'restore_terminal' EXIT HUP INT TERM
-stty -echo -icanon min 0 time 2 2>/dev/null || :
+stty -echo -icanon min 0 time 1 2>/dev/null || :
 
 read_byte() {
   LC_ALL=C dd bs=1 count=1 2>/dev/null | od -An -tu1 | awk '{print $1}'
@@ -28,6 +28,15 @@ leave_sidebar() {
   target=$(tas_tmux list-panes -t "$window" -F '#{pane_id} #{@awesome_sidebar_kind}' |
     awk '$2!="sidebar"{print $1;exit}')
   [ -z "$target" ] || tas_tmux select-pane -t "$target"
+}
+
+move_cursor() {
+  direction=$1
+  next=$(printf '%s\n' "$rows" | tas_cursor_move "$cursor" "$direction")
+  [ -n "$next" ] || return 0
+  tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_cursor "$next"
+  cursor=$next
+  last=''
 }
 
 last=''
@@ -44,10 +53,10 @@ while :; do
 
   byte=$(read_byte)
   case ${byte-} in
-    106) "$ROOT/action" navigate "$pane_id" down ;;  # j
-    107) "$ROOT/action" navigate "$pane_id" up ;;    # k
-    103) "$ROOT/action" navigate "$pane_id" gg ;;     # g
-    71)  "$ROOT/action" navigate "$pane_id" G ;;      # G
+    106) move_cursor down ;;  # j
+    107) move_cursor up ;;    # k
+    103) move_cursor gg ;;    # g
+    71)  move_cursor G ;;     # G
     10|13) "$ROOT/action" navigate "$pane_id" enter ;; # Enter
     113) leave_sidebar ;;                                # q
     27)
@@ -55,8 +64,8 @@ while :; do
       if [ "${second-}" = 91 ]; then
         third=$(read_byte)
         case ${third-} in
-          65) "$ROOT/action" navigate "$pane_id" up ;;
-          66) "$ROOT/action" navigate "$pane_id" down ;;
+          65) move_cursor up ;;
+          66) move_cursor down ;;
         esac
       else
         leave_sidebar

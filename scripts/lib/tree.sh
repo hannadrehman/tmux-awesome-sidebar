@@ -6,7 +6,7 @@ fi
 
 tas_list_group_windows() {
   session=$1; tas_validate_id "$session" session || return 2
-  tas_tmux list-windows -t "$session" -F '#{window_id}	#{session_id}	#{@awesome_sidebar_group}	#{@awesome_sidebar_kind}	#{window_index}	#{window_name}	#{pane_current_path}' |
+  tas_tmux list-windows -t "$session" -F '#{window_id}	#{session_id}	#{@awesome_sidebar_group}	#{@awesome_sidebar_kind}	#{window_index}	#{window_name}	#{pane_current_path}	#{@awesome_sidebar_name}	#{pane_current_command}	#{pane_dead}' |
     sort -t "$(printf '\t')" -k5,5n
 }
 tas_list_content_panes() {
@@ -14,19 +14,17 @@ tas_list_content_panes() {
   tas_tmux list-panes -t "$1" -F '#{pane_id}	#{@awesome_sidebar_kind}	#{pane_index}' | awk -F '\t' '$2!="sidebar"{print $1}'
 }
 tas_build_rows() {
-  session=$1; tas_validate_id "$session" session || return 2; tab=$(printf '\t')
-  tas_list_group_windows "$session" | while IFS="$tab" read -r wid sid wgroup kind order wname wpath; do
-    [ -n "$wid" ] || continue
-    name=$(tas_tmux display-message -p -t "$wid" '#{@awesome_sidebar_name}')
-    [ -n "$name" ] || name=$wname
-    path=$(tas_tmux display-message -p -t "$wid" '#{pane_current_path}')
-    repo=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null || :)
-    branch=$(git -C "$path" symbolic-ref --short -q HEAD 2>/dev/null || echo '(detached)')
-    cmd=$(tas_tmux display-message -p -t "$wid" '#{pane_current_command}')
-    dead=$(tas_tmux display-message -p -t "$wid" '#{pane_dead}')
-    tas_validate_text "$name" && tas_validate_text "$repo" && tas_validate_text "$branch" && tas_validate_text "$path" || continue
-    printf 'session\t%s\t\t%s\t%s\t%s\t%s\t%s\t%s\t\n' "$wid" "$name" "$repo" "$branch" "$path" "$cmd" "$( [ "$dead" = 1 ] && echo dead || echo active )"
-  done
+  session=$1; tas_validate_id "$session" session || return 2
+  tas_list_group_windows "$session" | awk -F '\t' '
+    BEGIN { OFS="\t" }
+    {
+      name=($8!="" ? $8 : $6)
+      gsub(/[\001-\011\013-\037\177\033]/, "", name)
+      gsub(/[\001-\011\013-\037\177\033]/, "", $7)
+      gsub(/[\001-\011\013-\037\177\033]/, "", $9)
+      print "session",$1,"",name,"","",$7,$9,($10==1 ? "dead" : "active"),""
+    }
+  '
 }
 tas_tree_visible() {
   collapsed=${1-}; awk -F '\t' -v c=",$collapsed," '$1=="session"{show=(index(c,","$2",")==0);print;next}show&&$1!="sidebar"{print}'
