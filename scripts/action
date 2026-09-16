@@ -106,6 +106,7 @@ enable_group() {
   tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_kind sidebar || return 1
   tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_group "$group" || return 1
   tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_host_session "$session" || return 1
+  tas_tmux resize-pane -t "$sidebar" -x "${width}%" || return 1
   current_cursor=$(tas_tmux show-option -p -qv -t "$sidebar" @awesome_sidebar_cursor)
   cursor_path=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_worktree_path)
   [ -n "$cursor_path" ] || cursor_path=$(git -C "$content_path" rev-parse --show-toplevel 2>/dev/null || :)

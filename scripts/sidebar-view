@@ -8,7 +8,7 @@ PROJECT_ROOT=$(CDPATH= cd -- "$ROOT/.." && pwd -P); export PROJECT_ROOT
 
 session=${1-}
 pane_id=${2-}
-width=$(tas_clamp_width "${3:-28}")
+width=$(tas_clamp_width "${3:-17}")
 icons=${4:-ascii}
 tas_validate_id "$session" session || { echo Windows; exit 0; }
 
@@ -53,10 +53,9 @@ move_cursor() {
   step=${2:-1}
   next=$(printf '%s\n' "$rows" | tas_cursor_move "$cursor" "$direction" "$step")
   [ -n "$next" ] || return 0
-  previous=$cursor
   tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_cursor "$next"
   cursor=$next
-  printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query" "$previous"
+  printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query"
   last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
 }
 
@@ -75,10 +74,8 @@ sync_cursor() {
   fi
   previous=$cursor
   cursor=$next
-  if [ "$label_changed" -eq 1 ]; then
+  if [ "$label_changed" -eq 1 ] || [ "$cursor" != "$previous" ]; then
     printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query"
-  elif [ "$cursor" != "$previous" ]; then
-    printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query" "$previous"
   fi
   last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
 }

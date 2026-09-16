@@ -13,7 +13,7 @@ tas_validate_id() {
 }
 tas_validate_text() { LC_ALL=C awk 'BEGIN {v=ARGV[1]; if (v ~ /[\001-\012\013-\037\177\033]/) exit 1}' "${1-}"; }
 tas_sanitize_display() { printf '%s' "${1-}" | LC_ALL=C awk '{gsub(/[\001-\011\013\014\016-\037\177\033]/, ""); printf "%s", $0}'; }
-tas_clamp_width() { width=${1:-28}; case $width in *[!0-9]*|'') width=28;; esac; [ "$width" -lt 16 ] && width=16; [ "$width" -gt 80 ] && width=80; printf '%s\n' "$width"; }
+tas_clamp_width() { width=${1:-17}; case $width in *[!0-9]*|'') width=17;; esac; [ "$width" -lt 10 ] && width=10; [ "$width" -gt 80 ] && width=80; printf '%s\n' "$width"; }
 tas_get_option() { tas_tmux show-option "$1" -qv -t "$2" "$3"; }
 tas_set_option() { tas_validate_text "$4" || return 2; tas_tmux set-option "$1" -t "$2" "$3" "$4"; }
 tas_lock_name() { printf '%s' "${1-}" | LC_ALL=C awk '{gsub(/[^A-Za-z0-9_.-]/,"_"); printf "awesome-sidebar-lock-%s",$0}'; }

@@ -10,7 +10,7 @@ Add this to `.tmux.conf` and reload tmux:
 
 ```tmux
 set -g @plugin 'hannadrehman/tmux-awesome-sidebar'
-set -g @awesome_sidebar_width 28
+set -g @awesome_sidebar_width 17
 set -g @awesome_sidebar_icons ascii
 ```
 

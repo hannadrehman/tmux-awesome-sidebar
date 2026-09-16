@@ -23,16 +23,11 @@ EOF
 assert_not_contains "$(printf '\033[2J')" <<EOF
 $rendered
 EOF
-delta=$(printf '%s\n' 'session	@1		One' 'session	@2		Two' | tas_render 28 ascii '@2' '' '@1')
-assert_contains "$(printf '\033[1;1H')" <<EOF
-$delta
+long_name='hr-coding-agents(feature/a-very-long-worktree-name)'
+truncated=$(printf 'session\t@1\t\t%s\n' "$long_name" | tas_render 17 ascii '@1')
+assert_contains 'hr-coding-agents(feature...' <<EOF
+$truncated
 EOF
-assert_contains "$(printf '\033[2;1H')" <<EOF
-$delta
-EOF
-assert_not_contains "$(printf '\033[H')" <<EOF
-$delta
-EOF
-assert_not_contains "$(printf '\033[J')" <<EOF
-$delta
+assert_not_contains "$long_name" <<EOF
+$truncated
 EOF
