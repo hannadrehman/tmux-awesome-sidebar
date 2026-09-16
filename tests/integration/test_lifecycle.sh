@@ -52,3 +52,6 @@ assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" "trap 'exit 0' HUP INT
 new_window=$(tmux_test new-window -d -t "$session_id" -n later -P -F '#{window_id}')
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" auto-enable-window "$session_id" "$new_window"
 assert_eq 0 "$(tmux_test list-panes -t "$new_window" -F '#{pane_left} #{@awesome_sidebar_kind}' | awk '$2=="sidebar"{print $1}')" "new window sidebar is leftmost"
+
+# A stale asynchronous hook target is benign rather than surfacing status 2.
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" auto-enable-window "$session_id" '@999999'

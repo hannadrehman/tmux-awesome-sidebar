@@ -292,11 +292,15 @@ disable_session() {
 auto_enable_window() {
   session=$1; window=$2; pane=${3-}
   tas_validate_id "$session" session && tas_validate_id "$window" window || return 2
-  if [ -z "$pane" ]; then
-    pane=$(tas_tmux list-panes -t "$window" -F '#{pane_id} #{@awesome_sidebar_kind}' |
-      awk '$2!="sidebar"{print $1;exit}')
-  fi
-  tas_validate_id "$pane" pane || return 2
+  attempt=0
+  while ! tas_validate_id "$pane" pane 2>/dev/null && [ "$attempt" -lt 5 ]; do
+    pane=$(tas_tmux list-panes -t "$window" -F '#{pane_id} #{@awesome_sidebar_kind}' 2>/dev/null |
+      awk '$2!="sidebar"{print $1;exit}' || :)
+    tas_validate_id "$pane" pane 2>/dev/null && break
+    attempt=$((attempt + 1))
+    sleep 0.05
+  done
+  tas_validate_id "$pane" pane 2>/dev/null || return 0
   name=$(tas_tmux display-message -p -t "$session" '#{session_name}')
   case "$name" in __awesome_sidebar_*) return 0;; esac
   group=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_group)
