@@ -99,7 +99,10 @@ enable_group() {
     sidebar=''
   fi
   if [ -z "$sidebar" ]; then
-    sidebar=$(tas_tmux split-window -d -h -b -p "$width" -t "$window" -P -F '#{pane_id}') || return 1
+    leftmost=$(tas_tmux list-panes -t "$window" -F "#{pane_id}${tab}#{pane_left}" |
+      awk -F '\t' 'NR==1{id=$1;left=$2} $2<left{id=$1;left=$2} END{print id}')
+    [ -n "$leftmost" ] || return 1
+    sidebar=$(tas_tmux split-window -d -h -b -p "$width" -t "$leftmost" -P -F '#{pane_id}') || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_kind sidebar || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_group "$group" || return 1
     tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "$saved_cursor" || return 1
@@ -194,19 +197,31 @@ disable_session() {
   tas_tmux kill-session -t "$storage" 2>/dev/null || :
 }
 
+auto_enable_window() {
+  session=$1; window=$2; pane=${3-}
+  tas_validate_id "$session" session && tas_validate_id "$window" window || return 2
+  if [ -z "$pane" ]; then
+    pane=$(tas_tmux list-panes -t "$window" -F '#{pane_id} #{@awesome_sidebar_kind}' |
+      awk '$2!="sidebar"{print $1;exit}')
+  fi
+  tas_validate_id "$pane" pane || return 2
+  name=$(tas_tmux display-message -p -t "$session" '#{session_name}')
+  case "$name" in __awesome_sidebar_*) return 0;; esac
+  group=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_group)
+  [ -n "$group" ] || group="s${session#\$}-w$(tas_tmux display-message -p -t "$window" '#{window_index}')"
+  tas_tmux set-option -w -t "$window" @awesome_sidebar_group "$group" || return 1
+  tas_with_group_lock "$group" enable_group "$session" "$window" "$pane"
+}
+
 auto_enable() {
   for session in $(tas_tmux list-sessions -F '#{session_id}'); do
     name=$(tas_tmux display-message -p -t "$session" '#{session_name}')
-    case "$name" in
-      __awesome_sidebar_*) continue ;;
-    esac
+    case "$name" in __awesome_sidebar_*) continue;; esac
     for window in $(tas_tmux list-windows -t "$session" -F '#{window_id}'); do
-      pane=$(tas_tmux list-panes -t "$window" -F '#{pane_id}' | sed -n '1p')
+      pane=$(tas_tmux list-panes -t "$window" -F '#{pane_id} #{@awesome_sidebar_kind}' |
+        awk '$2!="sidebar"{print $1;exit}')
       [ -n "$pane" ] || continue
-      group=$(tas_tmux show-option -wqv -t "$window" @awesome_sidebar_group)
-      [ -n "$group" ] || group="s${session#\$}-w$(tas_tmux display-message -p -t "$window" '#{window_index}')"
-      tas_tmux set-option -w -t "$window" @awesome_sidebar_group "$group" || return 1
-      tas_with_group_lock "$group" enable_group "$session" "$window" "$pane" || return 1
+      auto_enable_window "$session" "$window" "$pane" || return 1
     done
   done
 }
@@ -279,6 +294,7 @@ navigate_action() {
 action=${1-}; [ -n "$action" ] || usage
 case $action in
   auto-enable) [ "$#" -eq 1 ] || usage; auto_enable;;
+  auto-enable-window) [ "$#" -eq 3 ] || usage; auto_enable_window "$2" "$3";;
   focus)
     [ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
     window=$2; client=${3-}

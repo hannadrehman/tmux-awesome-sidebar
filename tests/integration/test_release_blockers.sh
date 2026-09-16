@@ -13,6 +13,7 @@ TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$fi
 first_group=$(tmux_test show-option -wqv -t "$first_window" @awesome_sidebar_group)
 
 second_window=$(tmux_test new-window -d -t "$session_id" -P -F '#{window_id}')
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" auto-enable-window "$session_id" "$second_window"
 i=0
 while [ "$i" -lt 20 ]; do
   second_sidebar=$(tmux_test list-panes -t "$second_window" -F '#{pane_id} #{@awesome_sidebar_kind}' | awk '$2=="sidebar"{print $1;exit}')

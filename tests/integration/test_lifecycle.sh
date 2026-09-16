@@ -23,6 +23,7 @@ assert_eq "$sidebar" "$(tmux_test display-message -p '#{pane_id}')" "focus actio
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$window_id" "$sidebar"
 assert_eq 2 "$(tmux_test list-panes -t "$window_id" | wc -l | awk '{print $1}')"
 new_host_window=$(tmux_test new-window -d -t "$session_id" -P -F '#{window_id}')
+TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" auto-enable-window "$session_id" "$new_host_window"
 new_window_ready=0
 i=0
 while [ "$i" -lt 20 ]; do

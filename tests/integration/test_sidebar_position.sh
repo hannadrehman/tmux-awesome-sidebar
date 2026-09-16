@@ -6,11 +6,13 @@ start_tmux sh
 session_id=$(tmux_test display-message -p '#{session_id}')
 window_id=$(tmux_test display-message -p '#{window_id}')
 content_pane=$(tmux_test display-message -p '#{pane_id}')
+extra_content=$(tmux_test split-window -d -h -p 30 -t "$window_id" -P -F '#{pane_id}')
 
 legacy_sidebar=$(tmux_test split-window -d -h -p 28 -t "$window_id" -P -F '#{pane_id}')
 tmux_test set-option -p -t "$legacy_sidebar" @awesome_sidebar_kind sidebar
 tmux_test set-option -p -t "$legacy_sidebar" @awesome_sidebar_cursor '@remembered'
 [ "$(tmux_test display-message -p -t "$legacy_sidebar" '#{pane_left}')" -gt 0 ]
+tmux_test select-pane -t "$extra_content"
 
 TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" enter "$session_id" "$window_id" "$content_pane"
 

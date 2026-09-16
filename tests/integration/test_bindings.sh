@@ -27,7 +27,7 @@ tmux_test list-keys -T awesome-sidebar Down | assert_contains 'navigate'
 tmux_test list-keys -T awesome-sidebar Down | assert_contains 'down'
 tmux_test list-keys -T awesome-sidebar | assert_contains 'command-prompt'
 tmux_test show-hooks -g | assert_contains 'after-new-window'
-tmux_test show-hooks -g | assert_contains 'auto-enable'
+tmux_test show-hooks -g | assert_contains 'auto-enable-window'
 assert_failure "$PROJECT_ROOT/scripts/action" focus '@999999'
 assert_file_contains "$PROJECT_ROOT/README.md" "set -g @plugin 'hannadrehman/tmux-awesome-sidebar'"
 assert_file_contains "$PROJECT_ROOT/README.md" '@awesome_sidebar_worktree_roots'
