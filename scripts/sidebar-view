@@ -23,6 +23,21 @@ read_byte() {
   LC_ALL=C dd bs=1 count=1 2>/dev/null | od -An -tu1 | awk '{print $1}'
 }
 
+# Hooks can emit several refresh bytes while windows are being created or the
+# plugin is reloaded. Collapse a burst into one refresh without dropping the
+# first real user key queued behind it.
+drain_refresh_bytes() {
+  stty min 0 time 0 2>/dev/null || :
+  while :; do
+    drained=$(read_byte)
+    [ -n "${drained-}" ] || break
+    [ "$drained" = 12 ] && continue
+    pending_byte=$drained
+    break
+  done
+  stty min 1 time 0 2>/dev/null || :
+}
+
 leave_sidebar() {
   window=$(tas_tmux display-message -p -t "$pane_id" '#{window_id}')
   target=$(tas_tmux list-panes -t "$window" -F '#{pane_id} #{@awesome_sidebar_kind}' |
@@ -48,8 +63,23 @@ refresh_rows() {
   rows=$(tas_build_rows "$session" | tas_tree_visible "$collapsed")
 }
 
+activate_cursor() {
+  row=$(printf '%s\n' "$rows" | awk -F '\t' -v id="$cursor" '$2==id{print;exit}')
+  [ -n "$row" ] || return 0
+  kind=$(printf '%s\n' "$row" | awk -F '\t' '{print $1}')
+  target=$(printf '%s\n' "$row" | awk -F '\t' '{print $2}')
+  path=$(printf '%s\n' "$row" | awk -F '\t' '{print $7}')
+  hint=''
+  if [ "$kind" = worktree ]; then
+    hint=$(printf '%s\n' "$rows" | awk -F '\t' -v p="$path" '$1=="worktree"&&$7==p&&$4~/ \*$/{print $3;exit}')
+  fi
+  "$ROOT/action" activate-row "$pane_id" "$kind" "$target" "$path" "$hint"
+}
+
 last=''
+pending_byte=''
 refresh_rows
+drain_refresh_bytes
 while :; do
   snapshot=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
   if [ "$snapshot" != "$last" ]; then
@@ -57,14 +87,24 @@ while :; do
     last=$snapshot
   fi
 
-  byte=$(read_byte)
+  if [ -n "$pending_byte" ]; then
+    byte=$pending_byte
+    pending_byte=''
+  else
+    byte=$(read_byte)
+  fi
   case ${byte-} in
     106) move_cursor down ;;  # j
     107) move_cursor up ;;    # k
     103) move_cursor gg ;;    # g
     71)  move_cursor G ;;     # G
-    10|13) "$ROOT/action" navigate "$pane_id" enter ;; # Enter
-    12) refresh_rows; last='' ;;                        # internal refresh
+    10|13) activate_cursor ;;                            # Enter
+    12)
+      drain_refresh_bytes
+      refresh_rows
+      drain_refresh_bytes
+      last=''
+      ;;                                                # internal refresh
     113) leave_sidebar ;;                                # q
     27)
       stty min 0 time 1 2>/dev/null || :

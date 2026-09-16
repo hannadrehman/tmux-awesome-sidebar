@@ -38,15 +38,54 @@ tas_merge_worktrees_with_sessions() {
   group=$1; roots=$(tas_tmux show-option -gqv @awesome_sidebar_worktree_roots)
   tas_discover_roots "$roots" | awk -F '\t' '!seen[$4]++'
 }
+tas_find_worktree_window() {
+  host_session=$1; path=$2
+  tas_validate_id "$host_session" session && tas_validate_text "$path" || return 2
+  target=$(CDPATH= cd -- "$path" 2>/dev/null && pwd -P) || return 1
+  tab=$(printf '\t')
+  for win in $(tas_tmux list-windows -t "$host_session" -F '#{window_id}'); do
+    configured=$(tas_tmux show-option -wqv -t "$win" @awesome_sidebar_worktree_path)
+    if [ -n "$configured" ]; then
+      configured=$(CDPATH= cd -- "$configured" 2>/dev/null && pwd -P || :)
+      if [ "$configured" = "$target" ]; then
+        printf '%s\n' "$win"
+        return 0
+      fi
+    fi
+    paths=$(tas_tmux list-panes -t "$win" -F "#{@awesome_sidebar_kind}${tab}#{pane_current_path}" |
+      awk -F '\t' '$1!="sidebar"{print $2}')
+    while IFS= read -r pane_path; do
+      [ -n "$pane_path" ] || continue
+      root=$(git -C "$pane_path" rev-parse --show-toplevel 2>/dev/null || :)
+      [ -n "$root" ] || continue
+      root=$(CDPATH= cd -- "$root" 2>/dev/null && pwd -P || :)
+      if [ "$root" = "$target" ]; then
+        printf '%s\n' "$win"
+        return 0
+      fi
+    done <<EOF
+$paths
+EOF
+  done
+  return 1
+}
 tas_worktree_activate() {
   group=$1; path=$2; context=${3-}; host_session=${4-}; tas_validate_text "$group" && tas_validate_text "$path" || return 2
   [ -d "$path" ] || return 1
   [ -n "$host_session" ] || host_session=$(tas_tmux list-sessions -F '#{session_id} #{session_name} #{@awesome_sidebar_group}' | awk -v g="$group" '$3==g && $2 !~ /^__awesome_sidebar_/{print $1;exit}')
   [ -n "$host_session" ] || return 1
+  win=$(tas_find_worktree_window "$host_session" "$path" || :)
+  if [ -n "$win" ]; then
+    "$ROOT/scripts/action" session-select "$group" "$win" "$context" "$host_session"
+    return $?
+  fi
   win=$("$ROOT/scripts/action" session-new "$group" "$path" "$(basename "$path")" "$context") || return 1
   [ -n "$win" ] || return 1
   "$ROOT/scripts/action" session-select "$group" "$win" "$context" "$host_session" || :
 }
-if [ "${1-}" = --discover ]; then tas_discover_roots "${2-}"; fi
-if [ "${1-}" = --activate ]; then tas_worktree_activate "${2-}" "${3-}" "${4-}" "${5-}"; fi
-[ "$#" -eq 0 ] && tas_parse_worktrees ""
+case ${1-} in
+  --discover) tas_discover_roots "${2-}"; exit $? ;;
+  --activate) tas_worktree_activate "${2-}" "${3-}" "${4-}" "${5-}"; exit $? ;;
+  '') tas_parse_worktrees "" ;;
+  *) exit 2 ;;
+esac

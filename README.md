@@ -29,7 +29,8 @@ window. Pane children and search results are not included.
 Focus the sidebar with your normal tmux pane-navigation binding or the mouse.
 It reads keys directly: `j/k` or the arrow keys move through the list, Enter
 switches to the selected window or opens the selected worktree in a new window,
-`g/G` jump to the ends, and `q` or Escape returns to the content area. The `ascii` icon
+reusing its existing window when it is already open. `g/G` jump to the ends,
+and `q` or Escape returns to the content area. The `ascii` icon
 mode is portable; `nerd` is an opt-in display choice. Run `scripts/doctor` to
 check dependencies, hooks, links, tags, bindings, prefix inheritance, and
 style interference.
