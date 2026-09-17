@@ -95,6 +95,16 @@ render_sidebar() {
   last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\t')$search_mode$(printf '\n')$rows
 }
 
+render_cursor_change() {
+  previous=$1
+  if [ "$pane_columns" -ge 32 ] && [ $((8 + ${#query})) -le "$pane_columns" ]; then
+    printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query" "$search_mode" "$previous"
+    last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\t')$search_mode$(printf '\n')$rows
+  else
+    render_sidebar
+  fi
+}
+
 begin_search() {
   search_mode=1
   pre_search_cursor=$cursor
@@ -142,9 +152,10 @@ move_cursor() {
   step=${2:-1}
   next=$(printf '%s\n' "$rows" | tas_cursor_move "$cursor" "$direction" "$step")
   [ -n "$next" ] || return 0
+  previous=$cursor
   tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_cursor "$next"
   cursor=$next
-  render_sidebar
+  render_cursor_change "$previous"
 }
 
 sync_cursor() {
@@ -163,7 +174,7 @@ sync_cursor() {
   previous=$cursor
   cursor=$next
   if [ "$label_changed" -eq 1 ] || [ "$cursor" != "$previous" ]; then
-    render_sidebar
+    if [ "$label_changed" -eq 1 ]; then render_sidebar; else render_cursor_change "$previous"; fi
   fi
   last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\t')$search_mode$(printf '\n')$rows
 }
@@ -171,7 +182,9 @@ sync_cursor() {
 refresh_rows() {
   collapsed=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_collapsed)
   height=$(tas_tmux display-message -p -t "$pane_id" '#{pane_height}')
+  pane_columns=$(tas_tmux display-message -p -t "$pane_id" '#{pane_width}')
   case "$height" in *[!0-9]*|'') height=24 ;; esac
+  case "$pane_columns" in *[!0-9]*|'') pane_columns=0 ;; esac
   page_size=$((height > 3 ? height - 3 : 1))
   half_page=$((page_size > 1 ? page_size / 2 : 1))
   all_rows=$(tas_build_rows "$session" | tas_tree_visible "$collapsed")

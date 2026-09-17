@@ -172,12 +172,14 @@ tas_filter_rows() {
 }
 
 tas_render() {
-  width=$(tas_clamp_width "$1"); icons=$2; cursor=$3; query=${4-}; search_mode=${5:-0}
+  width=$(tas_clamp_width "$1"); icons=$2; cursor=$3; query=${4-}; search_mode=${5:-0}; previous=${6-}
   # Repaint in place. Clearing the entire terminal here causes a visible blank
   # frame between every cursor movement in tmux.
-  if [ "$search_mode" -eq 1 ]; then suffix=_; else suffix=''; fi
-  printf '\033[H\033[2KSearch: %s%s\n' "$query" "$suffix"
-  awk -F '\t' -v w="$width" -v i="$icons" -v c="$cursor" '
+  if [ -z "$previous" ]; then
+    if [ "$search_mode" -eq 1 ]; then suffix=_; else suffix=''; fi
+    printf '\033[H\033[2KSearch: %s%s\n' "$query" "$suffix"
+  fi
+  awk -F '\t' -v w="$width" -v i="$icons" -v c="$cursor" -v p="$previous" '
   BEGIN { e=sprintf("%c",27) }
   function truncate(s,n) { return length(s)>n ? substr(s,1,n) "..." : s }
   {
@@ -187,8 +189,12 @@ tas_render() {
     if ($1=="session") text=e "[1m" text e "[22m"
     if ($2==c) text=e "[7m" text e "[0m"
     if ($9=="dead") text=e "[2m" text e "[22m"
+    if (p!="") {
+      if ($2==p || $2==c) printf e "[%d;1H" e "[2K%s", NR+1, text
+      next
+    }
     print e "[2K" text
   }
-  END { printf e "[J" }
+  END { if (p=="") printf e "[J" }
   '
 }
