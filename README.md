@@ -41,6 +41,10 @@ mode is portable; `nerd` is an opt-in display choice. Run `scripts/doctor` to
 check dependencies, hooks, links, tags, bindings, prefix inheritance, and
 style interference.
 
+The first line is a fuzzy-search input. Press `/` to edit it; typing filters
+the navigable rows immediately. Backspace edits, Enter keeps the filtered
+results and returns to navigation, and Escape clears the query.
+
 On a project row, `a` prompts for a new branch/worktree name; blank input uses
 `worktree-N`. The worktree is added to the tree without opening a tab. Press
 `r` on a worktree or project row to confirm removal. Worktree removal honors

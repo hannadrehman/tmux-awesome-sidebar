@@ -161,17 +161,23 @@ tas_cursor_move() {
 tas_parent_for_row() { awk -F '\t' -v id="$1" '$2==id{print $3;exit}'; }
 tas_build_search_index() { tas_build_rows "$1"; }
 
+tas_filter_rows() {
+  query=${1-}
+  if [ -z "$query" ]; then
+    cat
+  else
+    search_awk=${TAS_SEARCH_AWK:-${PROJECT_ROOT:-.}/scripts/search.awk}
+    awk -v query="$query" -f "$search_awk" | awk -F '\t' '{sub(/^[^\t]*\t/, ""); print}'
+  fi
+}
+
 tas_render() {
-  width=$(tas_clamp_width "$1"); icons=$2; cursor=$3; query=${4-}
+  width=$(tas_clamp_width "$1"); icons=$2; cursor=$3; query=${4-}; search_mode=${5:-0}
   # Repaint in place. Clearing the entire terminal here causes a visible blank
   # frame between every cursor movement in tmux.
-  printf '\033[H'
-  search_awk=${TAS_SEARCH_AWK:-${PROJECT_ROOT:-.}/scripts/search.awk}
-  if [ -n "$query" ]; then
-    awk -v query="$query" -f "$search_awk" | awk -F '\t' '{sub(/^[^\t]*\t/, ""); print}'
-  else
-    cat
-  fi | awk -F '\t' -v w="$width" -v i="$icons" -v c="$cursor" '
+  if [ "$search_mode" -eq 1 ]; then suffix=_; else suffix=''; fi
+  printf '\033[H\033[2KSearch: %s%s\n' "$query" "$suffix"
+  awk -F '\t' -v w="$width" -v i="$icons" -v c="$cursor" '
   BEGIN { e=sprintf("%c",27) }
   function truncate(s,n) { return length(s)>n ? substr(s,1,n) "..." : s }
   {

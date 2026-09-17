@@ -83,6 +83,60 @@ remove_row() {
   last=''
 }
 
+apply_filter() {
+  rows=$(printf '%s\n' "$all_rows" | tas_filter_rows "$query")
+  if ! printf '%s\n' "$rows" | awk -F '\t' -v id="$cursor" '$2==id{found=1}END{exit !found}'; then
+    cursor=$(printf '%s\n' "$rows" | awk -F '\t' 'NF{print $2;exit}')
+  fi
+}
+
+render_sidebar() {
+  printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query" "$search_mode"
+  last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\t')$search_mode$(printf '\n')$rows
+}
+
+begin_search() {
+  search_mode=1
+  pre_search_cursor=$cursor
+  render_sidebar
+}
+
+update_search() {
+  query=$1
+  apply_filter
+  cursor=$(printf '%s\n' "$rows" | awk -F '\t' 'NF{print $2;exit}')
+  render_sidebar
+}
+
+handle_search_byte() {
+  search_byte=$1
+  case "$search_byte" in
+    10|13)
+      search_mode=0
+      tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_query "$query"
+      tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_cursor "$cursor"
+      render_sidebar
+      ;;
+    27)
+      search_mode=0
+      query=''
+      cursor=$pre_search_cursor
+      apply_filter
+      tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_query ''
+      tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_cursor "$cursor"
+      render_sidebar
+      ;;
+    8|127) update_search "${query%?}" ;;
+    21) update_search '' ;;
+    *)
+      if [ "$search_byte" -ge 32 ] 2>/dev/null && [ "$search_byte" -le 126 ] 2>/dev/null && [ "${#query}" -lt 100 ]; then
+        character=$(awk -v n="$search_byte" 'BEGIN{printf "%c",n}')
+        update_search "$query$character"
+      fi
+      ;;
+  esac
+}
+
 move_cursor() {
   direction=$1
   step=${2:-1}
@@ -90,8 +144,7 @@ move_cursor() {
   [ -n "$next" ] || return 0
   tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_cursor "$next"
   cursor=$next
-  printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query"
-  last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
+  render_sidebar
 }
 
 sync_cursor() {
@@ -110,20 +163,19 @@ sync_cursor() {
   previous=$cursor
   cursor=$next
   if [ "$label_changed" -eq 1 ] || [ "$cursor" != "$previous" ]; then
-    printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query"
+    render_sidebar
   fi
-  last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
+  last=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\t')$search_mode$(printf '\n')$rows
 }
 
 refresh_rows() {
-  cursor=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_cursor)
   collapsed=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_collapsed)
-  query=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_query)
   height=$(tas_tmux display-message -p -t "$pane_id" '#{pane_height}')
   case "$height" in *[!0-9]*|'') height=24 ;; esac
-  page_size=$((height > 2 ? height - 2 : 1))
+  page_size=$((height > 3 ? height - 3 : 1))
   half_page=$((page_size > 1 ? page_size / 2 : 1))
-  rows=$(tas_build_rows "$session" | tas_tree_visible "$collapsed")
+  all_rows=$(tas_build_rows "$session" | tas_tree_visible "$collapsed")
+  apply_filter
 }
 
 activate_cursor() {
@@ -141,12 +193,16 @@ activate_cursor() {
 
 last=''
 pending_byte=''
+search_mode=0
+pre_search_cursor=''
+cursor=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_cursor)
+query=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_query)
 refresh_rows
 drain_refresh_bytes
 while :; do
-  snapshot=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\n')$rows
+  snapshot=$cursor$(printf '\t')$collapsed$(printf '\t')$query$(printf '\t')$search_mode$(printf '\n')$rows
   if [ "$snapshot" != "$last" ]; then
-    printf '%s\n' "$rows" | tas_render "$width" "$icons" "$cursor" "$query"
+    render_sidebar
     last=$snapshot
   fi
 
@@ -156,6 +212,10 @@ while :; do
   else
     byte=$(read_byte)
   fi
+  if [ "$search_mode" -eq 1 ]; then
+    handle_search_byte "${byte-}"
+    continue
+  fi
   case ${byte-} in
     1)   sync_cursor ;;        # internal active-window sync
     106) move_cursor down ;;  # j
@@ -164,6 +224,7 @@ while :; do
     71)  move_cursor G ;;     # G
     97)  add_worktree ;;      # a
     114) remove_row ;;        # r
+    47)  begin_search ;;      # /
     21)  move_cursor page-up "$half_page" ;;    # Ctrl-u
     4)   move_cursor page-down "$half_page" ;;  # Ctrl-d
     2)   move_cursor page-up "$page_size" ;;    # Ctrl-b

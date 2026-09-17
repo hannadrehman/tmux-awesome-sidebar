@@ -49,6 +49,7 @@ assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '106) move_cursor down
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '10|13) activate_cursor'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '97)  add_worktree'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '114) remove_row'
+assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '47)  begin_search'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" "trap 'exit 0' HUP INT TERM"
 
 new_window=$(tmux_test new-window -d -t "$session_id" -n later -P -F '#{window_id}')
