@@ -61,7 +61,11 @@ add_worktree() {
   [ "$(printf '%s\n' "$row" | awk -F '\t' '{print $1}')" = session ] || return 0
   path=$(printf '%s\n' "$row" | awk -F '\t' '{print $7}')
   prompt_reply 'New worktree name (blank = automatic): '
-  "$ROOT/action" worktree-add "$pane_id" "$path" "$reply" || :
+  created=$("$ROOT/action" worktree-add "$pane_id" "$path" "$reply" || :)
+  if [ -n "$created" ]; then
+    cursor=worktree:$created
+    tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_cursor "$cursor"
+  fi
   refresh_rows
   last=''
 }

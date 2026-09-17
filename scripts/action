@@ -292,6 +292,7 @@ worktree_add() {
   group=$(tas_tmux display-message -p -t "$pane" '#{@awesome_sidebar_group}')
   [ -z "$group" ] || tas_signal_group "$group"
   tas_tmux display-message "Added worktree: $name"
+  CDPATH= cd -- "$destination" 2>/dev/null && pwd -P
 }
 
 windows_for_path() {

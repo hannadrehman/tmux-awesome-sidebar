@@ -19,10 +19,11 @@ sidebar=$(tmux_test list-panes -t "$root_window" -F "#{pane_id}${tab}#{@awesome_
 
 # Blank input receives a stable generated name and appears in git's worktree
 # list without opening another tmux window.
-TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" worktree-add "$sidebar" "$gitroot" ''
+created_output=$(TMUX_SOCKET=$TEST_SOCKET "$PROJECT_ROOT/scripts/action" worktree-add "$sidebar" "$gitroot" '')
 created=$(git -C "$gitroot" worktree list --porcelain | awk '/^worktree /{path=substr($0,10)}/^branch refs\/heads\/worktree-1$/{print path;exit}')
 [ -n "$created" ]
 [ -d "$created" ]
+assert_eq "$created" "$created_output" "creation returns the new worktree row path"
 assert_eq 1 "$(tmux_test list-windows -t "$session_id" -F '#{window_id}' | wc -l | awk '{print $1}')" "adding an entry does not open a tab"
 
 # Removing a clean linked worktree removes its entry and closes any associated
