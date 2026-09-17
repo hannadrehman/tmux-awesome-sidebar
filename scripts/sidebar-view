@@ -48,6 +48,37 @@ leave_sidebar() {
   [ -z "$target" ] || tas_tmux select-pane -t "$target"
 }
 
+prompt_reply() {
+  prompt=$1
+  restore_terminal
+  printf '\033[2J\033[H%s' "$prompt"
+  IFS= read -r reply || reply=''
+  stty -echo -icanon min 1 time 0 2>/dev/null || :
+}
+
+add_worktree() {
+  row=$(printf '%s\n' "$rows" | awk -F '\t' -v id="$cursor" '$2==id{print;exit}')
+  [ "$(printf '%s\n' "$row" | awk -F '\t' '{print $1}')" = session ] || return 0
+  path=$(printf '%s\n' "$row" | awk -F '\t' '{print $7}')
+  prompt_reply 'New worktree name (blank = automatic): '
+  "$ROOT/action" worktree-add "$pane_id" "$path" "$reply" || :
+  refresh_rows
+  last=''
+}
+
+remove_row() {
+  row=$(printf '%s\n' "$rows" | awk -F '\t' -v id="$cursor" '$2==id{print;exit}')
+  [ -n "$row" ] || return 0
+  kind=$(printf '%s\n' "$row" | awk -F '\t' '{print $1}')
+  path=$(printf '%s\n' "$row" | awk -F '\t' '{print $7}')
+  label=$(printf '%s\n' "$row" | awk -F '\t' '{print $4}')
+  case "$kind" in session|worktree) ;; *) return 0 ;; esac
+  prompt_reply "Remove $label and close its tabs? [y/N]: "
+  case "$reply" in y|Y|yes|YES) "$ROOT/action" remove-row "$pane_id" "$kind" "$path" || : ;; esac
+  refresh_rows
+  last=''
+}
+
 move_cursor() {
   direction=$1
   step=${2:-1}
@@ -127,6 +158,8 @@ while :; do
     107) move_cursor up ;;    # k
     103) move_cursor gg ;;    # g
     71)  move_cursor G ;;     # G
+    97)  add_worktree ;;      # a
+    114) remove_row ;;        # r
     21)  move_cursor page-up "$half_page" ;;    # Ctrl-u
     4)   move_cursor page-down "$half_page" ;;  # Ctrl-d
     2)   move_cursor page-up "$page_size" ;;    # Ctrl-b

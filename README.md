@@ -40,3 +40,9 @@ or Escape returns to the content area. The `ascii` icon
 mode is portable; `nerd` is an opt-in display choice. Run `scripts/doctor` to
 check dependencies, hooks, links, tags, bindings, prefix inheritance, and
 style interference.
+
+On a project row, `a` prompts for a new branch/worktree name; blank input uses
+`worktree-N`. The worktree is added to the tree without opening a tab. Press
+`r` on a worktree or project row to confirm removal. Worktree removal honors
+Git's dirty-worktree protection, while project removal only closes that
+project's tmux windows and never deletes the repository.

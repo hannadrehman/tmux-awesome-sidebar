@@ -257,6 +257,107 @@ session_select() {
   [ -z "$content" ] || tas_tmux select-pane -t "$content"
 }
 
+repo_common_dir() {
+  path=$1
+  repo=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null || :)
+  [ -n "$repo" ] || return 1
+  common=$(git -C "$repo" rev-parse --git-common-dir 2>/dev/null || :)
+  case "$common" in /*) ;; *) common=$repo/$common ;; esac
+  CDPATH= cd -- "$common" 2>/dev/null && pwd -P
+}
+
+worktree_add() {
+  pane=$1; path=$2; requested=${3-}
+  tas_validate_id "$pane" pane && tas_validate_text "$path" && tas_validate_text "$requested" || return 2
+  repo=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null || :)
+  [ -n "$repo" ] || { tas_tmux display-message 'Not a Git project'; return 1; }
+  repo=$(CDPATH= cd -- "$repo" && pwd -P) || return 1
+  base=$(dirname "$repo")/.worktrees/$(basename "$repo")
+  name=$requested
+  if [ -z "$name" ]; then
+    number=1
+    while git -C "$repo" show-ref --verify --quiet "refs/heads/worktree-$number" || [ -e "$base/worktree-$number" ]; do number=$((number + 1)); done
+    name=worktree-$number
+  fi
+  git check-ref-format --branch "$name" >/dev/null 2>&1 || { tas_tmux display-message "Invalid worktree name: $name"; return 1; }
+  slug=$(printf '%s' "$name" | awk '{gsub(/[^[:alnum:]_.-]+/,"-");print}')
+  destination=$base/$slug
+  [ ! -e "$destination" ] || { tas_tmux display-message "Worktree path already exists: $destination"; return 1; }
+  mkdir -p "$base" || return 1
+  if git -C "$repo" show-ref --verify --quiet "refs/heads/$name"; then
+    result=$(git -C "$repo" worktree add "$destination" "$name" 2>&1) || { tas_tmux display-message "$(tas_sanitize_display "$result")"; return 1; }
+  else
+    result=$(git -C "$repo" worktree add -b "$name" "$destination" 2>&1) || { tas_tmux display-message "$(tas_sanitize_display "$result")"; return 1; }
+  fi
+  group=$(tas_tmux display-message -p -t "$pane" '#{@awesome_sidebar_group}')
+  [ -z "$group" ] || tas_signal_group "$group"
+  tas_tmux display-message "Added worktree: $name"
+}
+
+windows_for_path() {
+  session=$1; selected_path=$2; scope=$3
+  selected_root=$(git -C "$selected_path" rev-parse --show-toplevel 2>/dev/null || :)
+  [ -z "$selected_root" ] || selected_root=$(CDPATH= cd -- "$selected_root" 2>/dev/null && pwd -P || :)
+  selected_common=''
+  [ -z "$selected_root" ] || selected_common=$(repo_common_dir "$selected_root" || :)
+  selected_plain=$(CDPATH= cd -- "$selected_path" 2>/dev/null && pwd -P || printf '%s' "$selected_path")
+  for candidate in $(tas_tmux list-windows -t "$session" -F '#{window_id}'); do
+    details=$(tas_window_content_details "$candidate")
+    IFS='|' read -r candidate_path command dead <<EOF
+$details
+EOF
+    candidate_root=$(git -C "$candidate_path" rev-parse --show-toplevel 2>/dev/null || :)
+    [ -z "$candidate_root" ] || candidate_root=$(CDPATH= cd -- "$candidate_root" 2>/dev/null && pwd -P || :)
+    if [ "$scope" = worktree ]; then
+      [ -n "$selected_root" ] && [ "$candidate_root" = "$selected_root" ] && printf '%s\n' "$candidate"
+    elif [ -n "$selected_common" ]; then
+      candidate_common=''; [ -z "$candidate_root" ] || candidate_common=$(repo_common_dir "$candidate_root" || :)
+      [ "$candidate_common" = "$selected_common" ] && printf '%s\n' "$candidate"
+    else
+      candidate_plain=$(CDPATH= cd -- "$candidate_path" 2>/dev/null && pwd -P || printf '%s' "$candidate_path")
+      [ "$candidate_plain" = "$selected_plain" ] && printf '%s\n' "$candidate"
+    fi
+  done
+}
+
+close_windows() {
+  session=$1; context_pane=$2; targets=$3
+  [ -n "$targets" ] || return 0
+  total=$(tas_tmux list-windows -t "$session" -F '#{window_id}' | awk 'END{print NR}')
+  removing=$(printf '%s\n' "$targets" | awk 'NF{n++}END{print n+0}')
+  if [ "$removing" -ge "$total" ]; then
+    tas_tmux new-window -d -t "$session" -n shell -c "${HOME:-/}" >/dev/null || return 1
+  fi
+  current=$(context_window "$context_pane" 2>/dev/null || :)
+  for target in $targets; do [ "$target" = "$current" ] || tas_tmux kill-window -t "$target" 2>/dev/null || :; done
+  if printf '%s\n' "$targets" | awk -v w="$current" '$0==w{found=1}END{exit !found}'; then
+    tas_tmux kill-window -t "$current" 2>/dev/null || :
+  fi
+}
+
+remove_row() {
+  pane=$1; row_kind=$2; path=$3
+  tas_validate_id "$pane" pane && tas_validate_text "$path" || return 2
+  session=$(tas_tmux show-option -p -qv -t "$pane" @awesome_sidebar_host_session)
+  [ -n "$session" ] || session=$(context_session "$pane")
+  tas_validate_id "$session" session || return 1
+  case "$row_kind" in
+    worktree)
+      root=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null || :)
+      [ -n "$root" ] || return 1
+      root=$(CDPATH= cd -- "$root" && pwd -P) || return 1
+      targets=$(windows_for_path "$session" "$root" worktree)
+      result=$(git -C "$root" worktree remove "$root" 2>&1) || { tas_tmux display-message "$(tas_sanitize_display "$result")"; return 1; }
+      close_windows "$session" "$pane" "$targets"
+      ;;
+    session)
+      targets=$(windows_for_path "$session" "$path" folder)
+      close_windows "$session" "$pane" "$targets"
+      ;;
+    *) return 2 ;;
+  esac
+}
+
 disable_group() {
   session=$1; window=$2; pane=$3; group=$4
   tas_validate_id "$session" session && tas_validate_id "$window" window && tas_validate_id "$pane" pane || return 2
@@ -481,6 +582,8 @@ case $action in
   refresh-from-hook) group=$(tas_tmux display-message -p '#{@awesome_sidebar_group}'); [ -n "$group" ] && tas_signal_group "$group" || :;;
   sync-active) [ "$#" -eq 2 ] || usage; sync_active_window "$2";;
   activate-row) [ "$#" -ge 5 ] && [ "$#" -le 6 ] || usage; activate_row "$2" "$3" "$4" "$5" "${6-}";;
+  worktree-add) [ "$#" -eq 4 ] || usage; worktree_add "$2" "$3" "$4";;
+  remove-row) [ "$#" -eq 4 ] || usage; remove_row "$2" "$3" "$4";;
   navigate) [ "$#" -eq 3 ] || usage; navigate_action "$2" "$3";;
   rename) [ "$#" -eq 3 ] || usage; tas_validate_id "$2" pane || exit 2; tas_set_manual_name "$2" "$3";;
   rename-clear) [ "$#" -eq 2 ] || usage; tas_validate_id "$2" pane || exit 2; tas_clear_manual_name "$2";;
