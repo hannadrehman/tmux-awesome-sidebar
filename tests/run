@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+kind=${1:-all}; shift || :
+case $kind in unit|integration) dirs=$kind;; all|coverage) dirs='unit integration';; *) exit 2;; esac
+status=0
+for dir in $dirs; do
+  if [ "$#" -gt 0 ]; then
+    for name in "$@"; do
+      case $name in test_*.sh) file=$ROOT/tests/$dir/$name;; *) file=$ROOT/tests/$dir/${name}.sh;; esac
+      [ -f "$file" ] || { echo "missing test: $file" >&2; status=1; continue; }
+      sh "$file" || status=1
+    done
+  else
+    found=0
+    for file in "$ROOT/tests/$dir"/test_*.sh; do [ -f "$file" ] || continue; found=1; sh "$file" || status=1; done
+    [ "$found" -eq 1 ] || { echo "no tests in $dir" >&2; status=1; }
+  fi
+done
+exit "$status"

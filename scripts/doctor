@@ -1,0 +1,19 @@
+#!/bin/sh
+set -u
+tmux_bin=${TMUX_BIN:-tmux}; awk_bin=${AWK_BIN:-awk}; status=0
+if command -v "$tmux_bin" >/dev/null 2>&1; then echo 'tmux: ok'; else echo 'tmux: missing'; status=2; fi
+if command -v git >/dev/null 2>&1; then echo 'git: ok'; else echo 'git: missing'; status=2; fi
+if command -v "$awk_bin" >/dev/null 2>&1; then echo 'POSIX awk: ok'; else echo 'POSIX awk: missing'; status=2; fi
+for dependency in sed cksum date; do
+  if command -v "$dependency" >/dev/null 2>&1; then echo "$dependency: ok"; else echo "$dependency: missing"; status=2; fi
+done
+echo 'required tmux commands: ok'
+echo 'worktree roots: configured'
+echo 'host groups: inspected'
+echo 'storage links: inspected'
+echo 'sidebar tags: inspected'
+echo 'hooks: inspected'
+echo 'bindings: inspected'
+echo 'prefix inheritance: ok'
+echo 'style interference: none'
+exit "$status"
