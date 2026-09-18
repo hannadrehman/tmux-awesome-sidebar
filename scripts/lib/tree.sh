@@ -1,15 +1,22 @@
 #!/bin/sh
+TREE_ROOT=${TREE_ROOT:-${PROJECT_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)}}
 if ! command -v tas_tmux >/dev/null 2>&1; then
-  TREE_ROOT=${PROJECT_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)}
   . "$TREE_ROOT/scripts/lib/common.sh"
+fi
+if ! command -v tas_path_key >/dev/null 2>&1; then
+  . "$TREE_ROOT/scripts/lib/state.sh"
 fi
 
 tas_list_group_windows() {
   session=$1; tas_validate_id "$session" session || return 2
   tab=$(printf '\t')
-  tas_tmux list-windows -t "$session" -F "#{window_id}${tab}#{window_index}${tab}#{window_name}${tab}#{@awesome_sidebar_name}${tab}#{@awesome_sidebar_worktree_path}" |
-    awk -F '\t' 'BEGIN{OFS="|"}{for(i=1;i<=5;i++)gsub(/\|/,"",$i);print $1,$2,$3,$4,$5}' |
-    sort -t '|' -k2,2n
+  records=$(tas_tmux list-windows -t "$session" -F "#{window_id}${tab}#{window_index}${tab}#{window_name}${tab}#{@awesome_sidebar_name}${tab}#{@awesome_sidebar_worktree_path}${tab}#{@awesome_sidebar_recent}${tab}#{@awesome_sidebar_label}" |
+    awk -F '\t' 'BEGIN{OFS="|"}{for(i=1;i<=7;i++)gsub(/\|/,"",$i);print $1,$2,$3,$4,$5,$6,$7}')
+  if [ "$(tas_tmux show-option -gqv @awesome_sidebar_sort)" = recent ]; then
+    printf '%s\n' "$records" | sort -t '|' -k6,6nr -k2,2n
+  else
+    printf '%s\n' "$records" | sort -t '|' -k2,2n
+  fi
 }
 
 tas_window_content_details() {
@@ -41,8 +48,10 @@ tas_build_rows() {
   enriched=''
   visible_repositories=''
   open_windows=''
+  group=$(tas_tmux show-option -qv -t "$session" @awesome_sidebar_group)
+  sort_mode=$(tas_tmux show-option -gqv @awesome_sidebar_sort)
 
-  while IFS='|' read -r wid index wname manual managed; do
+  while IFS='|' read -r wid index wname manual managed recent alias; do
     [ -n "$wid" ] || continue
     details=$(tas_window_content_details "$wid")
     IFS='|' read -r raw_wpath command dead <<EOF
@@ -73,8 +82,8 @@ EOF
         visible_repositories=$visible_repositories$key_sep$common$key_sep
       fi
     fi
-    line=$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
-      "$wid" "$index" "$wname" "$manual" "$managed" "$raw_wpath" "$command" "$dead" "$repo" "$common" "$folder" "$worktree")
+    line=$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
+      "$wid" "$index" "$wname" "$manual" "$managed" "$raw_wpath" "$command" "$dead" "$repo" "$common" "$folder" "$worktree" "$alias")
     enriched=$(printf '%s\n%s' "$enriched" "$line")
   done <<EOF
 $window_records
@@ -82,7 +91,7 @@ EOF
 
   seen_repositories=''
   promoted_managed=''
-  while IFS='|' read -r wid index wname manual managed raw_wpath command dead repo common folder worktree; do
+  while IFS='|' read -r wid index wname manual managed raw_wpath command dead repo common folder worktree alias; do
     [ -n "$wid" ] || continue
     hidden=0
     if [ -n "$managed" ] && [ -n "$common" ]; then
@@ -96,6 +105,7 @@ EOF
     if [ -n "$repo" ]; then name=$folder'('$worktree')'
     else name=$manual; [ -n "$name" ] || name=$(basename "$raw_wpath")-$index
     fi
+    [ -z "$alias" ] || name=$alias
     name=$(tas_sanitize_display "$name")
     wpath=$(tas_sanitize_display "$raw_wpath")
     command=$(tas_sanitize_display "$command")
@@ -107,19 +117,29 @@ EOF
       *"$key_sep$common$key_sep"*) continue ;;
     esac
     seen_repositories=$seen_repositories$key_sep$common$key_sep
-    git -C "$repo" worktree list --porcelain 2>/dev/null |
+    children=$(git -C "$repo" worktree list --porcelain 2>/dev/null |
       awk '
         function emit() {
           if (path == "") return
           if (branch == "") branch="(detached)"
-          print branch "\t" path
+          print ++sequence "\t" branch "\t" path
           path=""; branch=""
         }
         /^worktree / { emit(); path=substr($0,10); next }
         /^branch / { branch=substr($0,8); sub(/^refs\/heads\//,"",branch); next }
         /^$/ { emit(); next }
         END { emit() }
-      ' | while IFS="$tab" read -r branch wtpath; do
+      ')
+    if [ "$sort_mode" = recent ]; then
+      ranked=$(printf '%s\n' "$children" | while IFS="$tab" read -r sequence branch wtpath; do
+        recent=$(tas_path_option_get recent "$wtpath")
+        if ! printf '%s\n' "$recent" | awk '/^[0-9]+$/{ok=1}END{exit !ok}'; then recent=0; fi
+        printf '%s\t%s\t%s\t%s\n' "$recent" "$sequence" "$branch" "$wtpath"
+      done | sort -t "$tab" -k1,1nr -k2,2n)
+    else
+      ranked=$(printf '%s\n' "$children" | awk -F '\t' 'BEGIN{OFS="\t"}{print 0,$1,$2,$3}')
+    fi
+    printf '%s\n' "$ranked" | while IFS="$tab" read -r recent sequence branch wtpath; do
         [ -n "$wtpath" ] || continue
         branch=$(tas_sanitize_display "$branch")
         wtpath=$(tas_sanitize_display "$wtpath")
@@ -127,8 +147,12 @@ EOF
         open_window=$(printf '%s' "$open_windows" | awk -F '|' -v p="$canonical" '$1==p{print $2;exit}')
         label=$branch; child_status=dormant
         if [ -n "$open_window" ]; then label="$label *"; child_status=active; fi
-        printf 'worktree\tworktree:%s\t%s\t%s\t%s\t%s\t%s\t\t%s\tworktree\t%s\n' \
-          "$wtpath" "$wid" "$label" "$folder" "$branch" "$wtpath" "$child_status" "$open_window"
+        alias=$(tas_path_option_get alias "$canonical")
+        [ -z "$alias" ] || label=$alias
+        badge=$(tas_status_cache_read "$canonical")
+        tas_status_cache_refresh "$canonical" "$group"
+        printf 'worktree\tworktree:%s\t%s\t%s\t%s\t%s\t%s\t\t%s\tworktree\t%s\t%s\n' \
+          "$wtpath" "$wid" "$label" "$folder" "$branch" "$wtpath" "$child_status" "$open_window" "$badge"
       done
   done <<EOF
 $enriched
@@ -171,21 +195,30 @@ tas_filter_rows() {
   fi
 }
 
+tas_slice_rows() {
+  offset=${1:-0}; limit=${2:-1}
+  awk -v o="$offset" -v l="$limit" 'NR>o && NR<=o+l'
+}
+
 tas_render() {
-  width=$(tas_clamp_width "$1"); icons=$2; cursor=$3; query=${4-}; search_mode=${5:-0}; previous=${6-}
+  width=$(tas_clamp_width "$1"); icons=$2; cursor=$3; query=${4-}; search_mode=${5:-0}; previous=${6-}; collapsed=${7-}
   # Repaint in place. Clearing the entire terminal here causes a visible blank
   # frame between every cursor movement in tmux.
   if [ -z "$previous" ]; then
     if [ "$search_mode" -eq 1 ]; then suffix=_; else suffix=''; fi
     printf '\033[H\033[2KSearch: %s%s\n' "$query" "$suffix"
   fi
-  awk -F '\t' -v w="$width" -v i="$icons" -v c="$cursor" -v p="$previous" '
+  awk -F '\t' -v w="$width" -v i="$icons" -v c="$cursor" -v p="$previous" -v collapsed=",$collapsed," '
   BEGIN { e=sprintf("%c",27) }
   function truncate(s,n) { return length(s)>n ? substr(s,1,n) "..." : s }
   {
-    if ($1=="session") prefix=(i=="nerd" ? "◆ " : "+ ")
+    if ($1=="session") {
+      closed=index(collapsed,","$2",")>0
+      prefix=(i=="nerd" ? (closed ? "▸ " : "▾ ") : (closed ? "+ " : "- "))
+    }
     else prefix=(i=="nerd" ? "  ├─ " : "  |- ")
-    text=prefix truncate($4,24)
+    badge=$12; if (badge!="") badge=" " badge
+    text=prefix truncate($4,24) badge
     if ($1=="session") text=e "[1m" text e "[22m"
     if ($2==c) text=e "[7m" text e "[0m"
     if ($9=="dead") text=e "[2m" text e "[22m"

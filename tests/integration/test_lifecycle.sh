@@ -21,6 +21,15 @@ for window in $windows; do
   assert_eq 0 "$(tmux_test display-message -p -t "$sidebar" '#{pane_dead}')" "sidebar process is running"
 done
 
+first_by_index=$(printf '%s\n' "$windows" | sed -n '1p')
+last_by_index=$(printf '%s\n' "$windows" | sed -n '$p')
+tmux_test set-option -w -t "$first_by_index" @awesome_sidebar_recent 1
+tmux_test set-option -w -t "$last_by_index" @awesome_sidebar_recent 2
+tmux_test set-option -g @awesome_sidebar_sort recent
+recent_first=$(env PROJECT_ROOT="$PROJECT_ROOT" TMUX_SOCKET="$TEST_SOCKET" sh -c '. "$1/scripts/lib/common.sh"; . "$1/scripts/lib/tree.sh"; tas_list_group_windows "$2"' sh "$PROJECT_ROOT" "$session_id" | sed -n '1s/|.*//p')
+assert_eq "$last_by_index" "$recent_first" "recent ordering"
+tmux_test set-option -gu @awesome_sidebar_sort
+
 rows=$(env PROJECT_ROOT="$PROJECT_ROOT" TMUX_SOCKET="$TEST_SOCKET" sh -c '. "$1/scripts/lib/common.sh"; . "$1/scripts/lib/tree.sh"; tas_build_rows "$2"' sh "$PROJECT_ROOT" "$session_id")
 assert_eq 3 "$(printf '%s\n' "$rows" | awk -F '\t' '$1=="session"{n++} END{print n+0}')" "all windows are listed"
 
@@ -50,6 +59,10 @@ assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '10|13) activate_curso
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '97)  add_worktree'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '114) remove_row'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '47)  begin_search'
+assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '104) collapse_cursor'
+assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '108) expand_cursor'
+assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '63)  render_help'
+assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '60) handle_mouse'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" "trap 'exit 0' HUP INT TERM"
 
 new_window=$(tmux_test new-window -d -t "$session_id" -n later -P -F '#{window_id}')

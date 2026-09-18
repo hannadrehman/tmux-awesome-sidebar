@@ -50,3 +50,13 @@ EOF
 assert_not_contains "$long_name" <<EOF
 $truncated
 EOF
+badged=$(printf 'worktree\tworktree:/repo\t@1\tmain\t\t\t/repo\t\tdormant\tworktree\t\t●↑2\n' | tas_render 28 ascii 'worktree:/repo')
+assert_contains 'main ●↑2' <<EOF
+$badged
+EOF
+folded=$(printf 'session\t@1\t\tProject\n' | tas_render 28 ascii '@1' '' 0 '' '@1')
+assert_contains '+ Project' <<EOF
+$folded
+EOF
+sliced=$(printf 'one\ntwo\nthree\nfour\n' | tas_slice_rows 1 2)
+assert_eq "$(printf 'two\nthree')" "$sliced" "viewport slice"
