@@ -160,7 +160,11 @@ EOF
   fi
   tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_cursor "$row_id" || return 1
   tas_tmux set-option -p -t "$sidebar" @awesome_sidebar_active_label "$active_label" || return 1
-  tas_tmux send-keys -t "$sidebar" C-a
+  if [ "${2-}" = full ]; then
+    tas_tmux send-keys -t "$sidebar" C-l
+  else
+    tas_tmux send-keys -t "$sidebar" C-a
+  fi
 }
 
 select_existing_window() {
@@ -599,7 +603,6 @@ case $action in
       tas_with_group_lock "$group" enable_group "$session" "$window" "$pane" || exit $?
       focus_sidebar "$window" || exit $?
     fi
-    [ -z "$client" ] || tas_tmux switch-client -c "$client" -T awesome-sidebar
     ;;
   enter)
     [ "$#" -ge 4 ] && [ "$#" -le 5 ] || usage
@@ -611,7 +614,6 @@ case $action in
     [ -n "$group" ] || group="s${session#\$}-w${window#@}"
     tas_with_group_lock "$group" enable_group "$session" "$window" "$pane" || exit $?
     focus_sidebar "$window" || exit $?
-    [ -z "$client" ] || tas_tmux switch-client -c "$client" -T awesome-sidebar
     ;;
   enable) [ "$#" -eq 4 ] || usage; shift; tas_with_group_lock "$1" enable_group "$@";;
   disable)
@@ -647,7 +649,7 @@ case $action in
     fi
     ;;
   refresh-from-hook) group=$(tas_tmux display-message -p '#{@awesome_sidebar_group}'); [ -n "$group" ] && tas_signal_group "$group" || :;;
-  sync-active) [ "$#" -eq 2 ] || usage; sync_active_window "$2";;
+  sync-active) [ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage; sync_active_window "$2" "${3-}";;
   activate-row) [ "$#" -ge 5 ] && [ "$#" -le 6 ] || usage; activate_row "$2" "$3" "$4" "$5" "${6-}";;
   worktree-add) [ "$#" -ge 4 ] && [ "$#" -le 5 ] || usage; worktree_add "$2" "$3" "$4" "${5-}";;
   remove-row) [ "$#" -eq 4 ] || usage; remove_row "$2" "$3" "$4";;

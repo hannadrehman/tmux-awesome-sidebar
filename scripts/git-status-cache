@@ -44,10 +44,13 @@ refresh_status() {
   umask 077
   printf '%s\n%s\n' "$now" "$badge" > "$temporary" || return 1
   mv "$temporary" "$file" || return 1
-  [ -z "$group" ] || tas_signal_group "$group" || :
+  # "quiet" suppresses the signal: batch refreshes signal the group once at
+  # the end instead of once per repository, which would cascade into a
+  # full tree rebuild per completion.
+  [ -n "${3-}" ] || { [ -z "$group" ] || tas_signal_group "$group" || :; }
 }
 
 case ${1-} in
-  refresh) [ "$#" -ge 2 ] && [ "$#" -le 3 ] || exit 2; refresh_status "$2" "${3-}" ;;
+  refresh) [ "$#" -ge 2 ] && [ "$#" -le 4 ] || exit 2; refresh_status "$2" "${3-}" "${4-}" ;;
   *) exit 2 ;;
 esac

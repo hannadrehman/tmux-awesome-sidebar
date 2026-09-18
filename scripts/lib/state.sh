@@ -12,7 +12,19 @@ tas_path_option() {
 
 tas_path_option_get() {
   option=$(tas_path_option "$1" "$2")
-  tas_tmux show-option -gqv "$option"
+  # A single show-options dump is primed by callers that do many lookups
+  # (tree building); each individual tmux exec costs more than the lookup.
+  if [ -n "${TAS_OPTIONS_DUMP:-}" ]; then
+    printf '%s' "$TAS_OPTIONS_DUMP" | awk -v o="$option" '
+      $1 == o {
+        sub(/^[^ \t]*[ \t]/, "")
+        # show-options quotes values that contain spaces; -qv does not.
+        if ($0 ~ /^"[^"]*"$/) $0 = substr($0, 2, length($0) - 2)
+        print; exit
+      }'
+  else
+    tas_tmux show-option -gqv "$option"
+  fi
 }
 
 tas_path_option_set() {
@@ -52,7 +64,8 @@ tas_status_cache_read() {
 tas_status_cache_refresh() {
   path=$1
   group=${2-}
+  quiet=${3-}
   helper=${PROJECT_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)}/scripts/git-status-cache
   [ -x "$helper" ] || return 0
-  "$helper" refresh "$path" "$group" >/dev/null 2>&1 &
+  "$helper" refresh "$path" "$group" "$quiet" >/dev/null 2>&1 &
 }

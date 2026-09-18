@@ -54,7 +54,7 @@ content_path=$(tmux_test list-panes -t "$second_window" -F '#{@awesome_sidebar_k
 worktree_path=$(git -C "$content_path" rev-parse --show-toplevel 2>/dev/null || :)
 if [ -n "$worktree_path" ]; then expected_cursor=worktree:$(CDPATH= cd -- "$worktree_path" && pwd -P); else expected_cursor=$second_window; fi
 assert_eq "$expected_cursor" "$(tmux_test show-option -p -qv -t "$active_sidebar" @awesome_sidebar_cursor)" "focused tab row is highlighted"
-assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '106) move_cursor down'
+assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '106) fast_move 106'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '10|13) activate_cursor'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '97)  add_worktree'
 assert_file_contains "$PROJECT_ROOT/scripts/sidebar-view" '114) remove_row'

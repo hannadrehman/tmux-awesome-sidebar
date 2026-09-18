@@ -22,19 +22,49 @@ trap 'exit 0' HUP INT TERM
 stty -echo -icanon min 1 time 0 2>/dev/null || :
 printf '\033[?1000h\033[?1006h'
 
-read_byte() {
+# Timed single-byte peek. The shell's read builtin ignores the stty VTIME
+# timeout, so every bounded read has to go through dd.
+peek_byte() {
   LC_ALL=C dd bs=1 count=1 2>/dev/null | od -An -tu1 | awk '{print $1}'
 }
+
+read_byte() {
+  if [ "$TAS_FAST_READ" -eq 1 ]; then
+    # bash builtins only: no fork per keystroke. A successful read with an
+    # empty variable means the byte was a newline (read treats it as the
+    # delimiter and does not assign it). Never fail: callers run under set -e.
+    if IFS= read -r -n 1 tas_read_char; then
+      if [ -n "$tas_read_char" ]; then
+        printf '%d' "'$tas_read_char"
+      else
+        printf '10'
+      fi
+    fi
+  else
+    LC_ALL=C dd bs=1 count=1 2>/dev/null | od -An -tu1 | awk '{print $1}'
+  fi
+  return 0
+}
+
+# Probe once: read -N 1 is not POSIX but works on bash (macOS /bin/sh) and zsh.
+TAS_FAST_READ=0
+if [ "$(printf a | { IFS= read -r -n 1 tas_probe 2>/dev/null && printf '%s' "$tas_probe"; })" = a ]; then
+  TAS_FAST_READ=1
+fi
 
 # Hooks can emit several refresh bytes while windows are being created or the
 # plugin is reloaded. Collapse a burst into one refresh without dropping the
 # first real user key queued behind it.
+stash_byte() {
+  pending_byte="${1-}${pending_byte:+ $pending_byte}"
+}
+
 drain_refresh_bytes() {
   # A zero decisecond timeout leaves BSD dd blocked on a tty after a zero-byte
   # read. Use a bounded 100ms read so this remains portable on macOS.
   stty min 0 time 1 2>/dev/null || :
   while :; do
-    drained=$(read_byte)
+    drained=$(peek_byte)
     [ -n "${drained-}" ] || break
     [ "$drained" = 12 ] && continue
     pending_byte=$drained
@@ -117,7 +147,8 @@ remove_row() {
 }
 
 apply_filter() {
-  rows=$(printf '%s\n' "$all_rows" | tas_filter_rows "$query")
+  display_rows=''
+  rows=$(printf '%s\n' "$all_rows" | tas_tree_visible "$collapsed" | tas_filter_rows "$query")
   if ! printf '%s\n' "$rows" | awk -F '\t' -v id="$cursor" '$2==id{found=1}END{exit !found}'; then
     cursor=$(printf '%s\n' "$rows" | awk -F '\t' 'NF{print $2;exit}')
   fi
@@ -144,8 +175,9 @@ render_cursor_change() {
 }
 
 update_viewport() {
-  total_rows=$(printf '%s\n' "$rows" | awk 'NF{n++}END{print n+0}')
-  position=$(printf '%s\n' "$rows" | awk -F '\t' -v id="$cursor" '$2==id{print NR;exit}')
+  stats=$(printf '%s\n' "$rows" | awk -F '\t' -v id="$cursor" '$2==id{pos=NR} END{print NR+0, pos+0}')
+  total_rows=${stats%% *}
+  position=${stats#* }
   case "$position" in *[!0-9]*|'') position=1;; esac
   case "$viewport_offset" in *[!0-9]*|'') viewport_offset=0;; esac
   if [ "$position" -le "$viewport_offset" ]; then viewport_offset=$((position - 1)); fi
@@ -153,6 +185,9 @@ update_viewport() {
   maximum=$((total_rows > body_size ? total_rows - body_size : 0))
   [ "$viewport_offset" -le "$maximum" ] || viewport_offset=$maximum
   [ "$viewport_offset" -ge 0 ] || viewport_offset=0
+  if [ "$viewport_offset" -eq "$old_offset" ] && [ -n "$display_rows" ]; then
+    return 0
+  fi
   display_rows=$(printf '%s\n' "$rows" | tas_slice_rows "$viewport_offset" "$body_size")
   first=$((total_rows > 0 ? viewport_offset + 1 : 0))
   last_visible=$((viewport_offset + body_size)); [ "$last_visible" -le "$total_rows" ] || last_visible=$total_rows
@@ -201,6 +236,28 @@ handle_search_byte() {
   esac
 }
 
+fast_move() {
+  dirbyte=$1
+  case $dirbyte in 106|66) direction=down ;; *) direction=up ;; esac
+  # Render the first move immediately, then absorb keys that arrive within a
+  # short window (held j/k) and move once more for the whole burst. The
+  # bounded peek only delays idle time, never the visible move.
+  move_cursor "$direction" 1
+  count=0
+  stty min 0 time 1 2>/dev/null || return 0
+  while :; do
+    b=$(peek_byte)
+    [ -n "${b-}" ] || break
+    case "$b $direction" in
+      '106 down'|'66 down'|'107 up'|'65 up') count=$((count + 1)) ;;
+      *) stash_byte "$b"; break ;;
+    esac
+  done
+  stty min 1 time 0 2>/dev/null || :
+  [ "$count" -gt 0 ] && move_cursor "$direction" "$count"
+  return 0
+}
+
 move_cursor() {
   direction=$1
   step=${2:-1}
@@ -215,7 +272,9 @@ move_cursor() {
 set_collapsed() {
   collapsed=$1
   tas_tmux set-option -p -t "$pane_id" @awesome_sidebar_collapsed "$collapsed"
-  refresh_rows
+  # Folding only changes which cached rows are visible; skip the full
+  # tmux+git rebuild so h/l and za/zM/zR feel instant.
+  apply_filter
   last=''
 }
 
@@ -278,12 +337,12 @@ handle_z_command() {
 
 handle_g_command() {
   stty min 0 time 1 2>/dev/null || :
-  second=$(read_byte)
+  second=$(peek_byte)
   stty min 1 time 0 2>/dev/null || :
   if [ "${second-}" = 103 ]; then move_cursor gg
   else
     run_row_action lazygit
-    [ -z "${second-}" ] || pending_byte=$second
+    [ -z "${second-}" ] || stash_byte "$second"
   fi
 }
 
@@ -336,6 +395,7 @@ sync_cursor() {
 }
 
 refresh_rows() {
+  display_rows=''
   collapsed=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_collapsed)
   height=$(tas_tmux display-message -p -t "$pane_id" '#{pane_height}')
   pane_columns=$(tas_tmux display-message -p -t "$pane_id" '#{pane_width}')
@@ -344,7 +404,10 @@ refresh_rows() {
   body_size=$((height > 2 ? height - 2 : 1))
   page_size=$body_size
   half_page=$((page_size > 1 ? page_size / 2 : 1))
-  all_rows=$(tas_build_rows "$session" | tas_tree_visible "$collapsed")
+  # all_rows stays unfiltered: folding only changes which rows are visible,
+  # and set_collapsed re-filters this cache. Filtering here would permanently
+  # strip the children of collapsed sessions and break expanding.
+  all_rows=$(tas_build_rows "$session")
   apply_filter
 }
 
@@ -366,6 +429,7 @@ pending_byte=''
 search_mode=0
 pre_search_cursor=''
 viewport_offset=0
+old_offset=0
 display_rows=''
 cursor=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_cursor)
 query=$(tas_tmux show-option -p -qv -t "$pane_id" @awesome_sidebar_query)
@@ -379,8 +443,11 @@ while :; do
   fi
 
   if [ -n "$pending_byte" ]; then
-    byte=$pending_byte
-    pending_byte=''
+    byte=${pending_byte%%" "*}
+    case $pending_byte in
+      *" "*) pending_byte=${pending_byte#*" "} ;;
+      *) pending_byte='' ;;
+    esac
   else
     byte=$(read_byte)
   fi
@@ -390,8 +457,8 @@ while :; do
   fi
   case ${byte-} in
     1)   sync_cursor ;;        # internal active-window sync
-    106) move_cursor down ;;  # j
-    107) move_cursor up ;;    # k
+    106) fast_move 106 ;;    # j
+    107) fast_move 107 ;;    # k
     103) handle_g_command ;;  # gg / lazygit
     71)  move_cursor G ;;     # G
     104) collapse_cursor ;;   # h
@@ -415,21 +482,35 @@ while :; do
     12)
       drain_refresh_bytes
       refresh_rows
+      sync_cursor
       drain_refresh_bytes
       last=''
       ;;                                                # internal refresh
+    5)
+      # Badge pickup: re-read the refreshed status cache without spawning
+      # another refresh batch (see tas_emit_flush in lib/tree.sh).
+      TAS_SKIP_BADGES=1
+      export TAS_SKIP_BADGES
+      drain_refresh_bytes
+      refresh_rows
+      sync_cursor
+      drain_refresh_bytes
+      last=''
+      unset TAS_SKIP_BADGES
+      ;;                                                # internal badge pickup
     113) leave_sidebar ;;                                # q
     27)
       stty min 0 time 1 2>/dev/null || :
-      second=$(read_byte)
+      second=$(peek_byte)
       if [ "${second-}" = 91 ]; then
         third=$(read_byte)
         case ${third-} in
-          65) move_cursor up ;;
-          66) move_cursor down ;;
+          65) fast_move 65 ;;
+          66) fast_move 66 ;;
           60) handle_mouse ;;
         esac
       else
+        [ -z "${second-}" ] || stash_byte "$second"
         leave_sidebar
       fi
       stty min 1 time 0 2>/dev/null || :

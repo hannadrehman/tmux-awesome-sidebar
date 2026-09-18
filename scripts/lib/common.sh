@@ -7,9 +7,9 @@ tas_tmux() {
   fi
 }
 tas_validate_id() {
-  id=${1-}; kind=${2-}
-  case "$kind:$id" in pane:%[0-9]*) ;; window:@[0-9]*) ;; session:\$[0-9]*) ;; *) return 2;; esac
-  case ${id#?} in *[!0-9]*|'') return 2;; esac
+  tas_id=${1-}; tas_kind=${2-}
+  case "$tas_kind:$tas_id" in pane:%[0-9]*) ;; window:@[0-9]*) ;; session:\$[0-9]*) ;; *) return 2;; esac
+  case ${tas_id#?} in *[!0-9]*|'') return 2;; esac
 }
 tas_validate_text() { LC_ALL=C awk 'BEGIN {v=ARGV[1]; if (v ~ /[\001-\012\013-\037\177\033]/) exit 1}' "${1-}"; }
 tas_sanitize_display() { printf '%s' "${1-}" | LC_ALL=C awk '{gsub(/[\001-\011\013\014\016-\037\177\033]/, ""); printf "%s", $0}'; }
@@ -29,15 +29,23 @@ tas_with_group_lock() {
   return "$result"
 }
 tas_signal_sidebar() {
-  id=${1-}; tas_validate_id "$id" pane || return 2
-  tas_tmux send-keys -t "$id" C-l
+  id=${1-}; key=${2:-C-l}
+  tas_validate_id "$id" pane || return 2
+  tas_tmux send-keys -t "$id" "$key"
 }
 tas_signal_group() {
-  group=${1-}; tas_validate_text "$group" && [ -n "$group" ] || return 2
+  group=${1-}; key=${2:-C-l}
+  tas_validate_text "$group" && [ -n "$group" ] || return 2
   tab=$(printf '\t')
-  tas_tmux list-panes -a -F "#{pane_id}${tab}#{@awesome_sidebar_group}${tab}#{@awesome_sidebar_kind}" |
-    awk -F '\t' -v g="$group" '$2==g && $3=="sidebar"{print $1}' |
-    while IFS= read -r pane; do
-      [ -n "$pane" ] && tas_signal_sidebar "$pane"
-    done
+  # Only the sidebar in the active window of an attached client is visible;
+  # refreshing hidden sidebars on every change floods the machine with fork
+  # storms (one tree rebuild per sidebar). Hidden sidebars refresh when their
+  # window is selected again (see the after-select-window hook).
+  panes=$(tas_tmux list-panes -a -F "#{pane_id}${tab}#{@awesome_sidebar_group}${tab}#{@awesome_sidebar_kind}${tab}#{window_active}${tab}#{session_attached}" |
+    awk -F '\t' -v g="$group" '$2==g && $3=="sidebar" && $4==1 && $5+0>0{print $1}')
+  [ -n "$panes" ] || panes=$(tas_tmux list-panes -a -F "#{pane_id}${tab}#{@awesome_sidebar_group}${tab}#{@awesome_sidebar_kind}" |
+    awk -F '\t' -v g="$group" '$2==g && $3=="sidebar"{print $1}')
+  printf '%s\n' "$panes" | while IFS= read -r pane; do
+    [ -n "$pane" ] && tas_signal_sidebar "$pane" "$key"
+  done
 }
