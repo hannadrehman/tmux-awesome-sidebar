@@ -1,0 +1,56 @@
+#!/bin/sh
+set -u
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
+PROJECT_ROOT=$(CDPATH= cd -- "$ROOT/.." && pwd -P); export PROJECT_ROOT
+. "$ROOT/lib/common.sh"
+. "$ROOT/lib/state.sh"
+
+refresh_status() {
+  path=$1
+  group=${2-}
+  tas_validate_text "$path" && tas_validate_text "$group" || return 2
+  [ -d "$path" ] || return 0
+
+  directory=$(tas_status_cache_dir)
+  mkdir -p "$directory" || return 1
+  key=$(tas_path_key "$path")
+  file=$directory/$key
+  lock=$directory/$key.lock
+  mkdir "$lock" 2>/dev/null || return 0
+  trap 'rmdir "$lock" 2>/dev/null || :' EXIT HUP INT TERM
+
+  now=$(date +%s)
+  if [ -r "$file" ]; then
+    saved=$(sed -n '1p' "$file")
+    case "$saved" in *[!0-9]*|'') saved=0;; esac
+    [ $((now - saved)) -ge 5 ] || return 0
+  fi
+
+  porcelain=$(git -C "$path" status --porcelain=1 2>/dev/null || :)
+  badge=''
+  if printf '%s\n' "$porcelain" | awk 'substr($0,1,2) ~ /(UU|AA|DD|AU|UA|DU|UD)/{found=1} END{exit !found}'; then
+    badge='!'
+  elif [ -n "$porcelain" ]; then
+    badge='●'
+  fi
+  counts=$(git -C "$path" rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null || :)
+  behind=$(printf '%s\n' "$counts" | awk '{print $1+0}')
+  ahead=$(printf '%s\n' "$counts" | awk '{print $2+0}')
+  [ "$ahead" -eq 0 ] || badge=$badge'↑'$ahead
+  [ "$behind" -eq 0 ] || badge=$badge'↓'$behind
+
+  temporary=$file.$$
+  umask 077
+  printf '%s\n%s\n' "$now" "$badge" > "$temporary" || return 1
+  mv "$temporary" "$file" || return 1
+  # "quiet" suppresses the signal: batch refreshes signal the group once at
+  # the end instead of once per repository, which would cascade into a
+  # full tree rebuild per completion.
+  [ -n "${3-}" ] || { [ -z "$group" ] || tas_signal_group "$group" || :; }
+}
+
+case ${1-} in
+  refresh) [ "$#" -ge 2 ] && [ "$#" -le 4 ] || exit 2; refresh_status "$2" "${3-}" "${4-}" ;;
+  *) exit 2 ;;
+esac
